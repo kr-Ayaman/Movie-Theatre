@@ -8,37 +8,86 @@
 namespace {
 
 void drawWallTiles() {
-    for (int row = 0; row < 10; ++row) {
-        float y = 2.1f + row * 2.0f;
-        for (int col = 0; col < 18; ++col) {
-            float z = -19.5f + col * 2.2f;
+    const int courses = 17;
+    const float courseHeight = 1.18f;
+    const float brickHeight = 1.05f;
+    const float firstCourseY = 1.3f;
 
-            float leftNoise = noise2D(row + 30, col + 80);
-            float leftR = 0.52f + leftNoise * 0.19f;
-            float leftG = 0.42f + leftNoise * 0.13f;
-            float leftB = 0.35f + leftNoise * 0.10f;
-            setMaterial(leftR, leftG, leftB, 10.0f, 0.06f);
-            drawBlock(-16.7f, y, z, 0.12f, 1.9f, 2.05f);
+    const float sideStart = -21.0f;
+    const float sideEnd = 21.0f;
+    const float backStart = -15.5f;
+    const float backEnd = 15.5f;
 
-            float rightNoise = noise2D(row + 140, col + 12);
-            float rightR = 0.50f + rightNoise * 0.20f;
-            float rightG = 0.41f + rightNoise * 0.14f;
-            float rightB = 0.34f + rightNoise * 0.10f;
-            setMaterial(rightR, rightG, rightB, 10.0f, 0.06f);
-            drawBlock(16.7f, y, z, 0.12f, 1.9f, 2.05f);
-        }
-    }
+    const float sideInset = 16.66f;
+    const float backInset = -21.66f;
 
-    for (int row = 0; row < 10; ++row) {
-        float y = 2.1f + row * 2.0f;
-        for (int col = 0; col < 15; ++col) {
-            float x = -14.3f + col * 2.05f;
-            float n = noise2D(row + 200, col + 300);
-            float r = 0.48f + n * 0.22f;
-            float g = 0.39f + n * 0.14f;
-            float b = 0.32f + n * 0.12f;
+    for (int row = 0; row < courses; ++row) {
+        float y = firstCourseY + row * courseHeight;
+        float offset = (row % 2 == 0) ? 0.0f : 0.75f;
+
+        float runSide = sideStart + offset;
+        int segment = 0;
+        while (runSide < sideEnd) {
+            float selector = noise2D(row + 22, segment + 31);
+            float brickLen = 1.1f;
+            if (selector > 0.70f) {
+                brickLen = 2.2f;
+            } else if (selector > 0.35f) {
+                brickLen = 1.6f;
+            }
+
+            if (runSide + brickLen > sideEnd) {
+                brickLen = sideEnd - runSide;
+            }
+            if (brickLen < 0.3f) {
+                break;
+            }
+
+            float toneA = noise2D(row + 100, segment + 5);
+            float toneB = noise2D(row + 170, segment + 55);
+            float r = 0.48f + toneA * 0.22f;
+            float g = 0.39f + toneB * 0.16f;
+            float b = 0.31f + toneA * 0.13f;
             setMaterial(r, g, b, 10.0f, 0.05f);
-            drawBlock(x, y, -21.7f, 1.9f, 1.9f, 0.12f);
+
+            float zCenter = runSide + brickLen * 0.5f;
+            drawBlock(-sideInset, y, zCenter, 0.13f, brickHeight, brickLen - 0.08f);
+            drawBlock(sideInset, y, zCenter, 0.13f, brickHeight, brickLen - 0.08f);
+
+            runSide += brickLen;
+            segment++;
+        }
+
+        float runBack = backStart + offset;
+        int backSegment = 0;
+        while (runBack < backEnd) {
+            float selector = noise2D(row + 260, backSegment + 19);
+            float brickLen = 1.15f;
+            if (selector > 0.68f) {
+                brickLen = 2.05f;
+            } else if (selector > 0.30f) {
+                brickLen = 1.45f;
+            }
+
+            if (runBack + brickLen > backEnd) {
+                brickLen = backEnd - runBack;
+            }
+            if (brickLen < 0.3f) {
+                break;
+            }
+
+            float toneA = noise2D(row + 330, backSegment + 67);
+            float toneB = noise2D(row + 410, backSegment + 13);
+            float r = 0.47f + toneA * 0.24f;
+            float g = 0.38f + toneB * 0.16f;
+            float b = 0.30f + toneA * 0.14f;
+            setMaterial(r, g, b, 10.0f, 0.05f);
+
+            float xCenter = runBack + brickLen * 0.5f;
+            drawBlock(xCenter, y, backInset, brickLen - 0.08f, brickHeight, 0.13f);
+
+            runBack += brickLen;
+            backSegment++;
         }
     }
 }

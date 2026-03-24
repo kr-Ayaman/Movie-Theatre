@@ -5,6 +5,11 @@
 
 namespace {
 
+const float kSeatStartZ = 0.0f;
+const float kRowSpacing = 1.55f;
+const float kSeatStartY = 1.1f;
+const float kRowRise = 0.78f;
+
 void drawSingleSeat(float x, float y, float z) {
     setMaterial(0.78f, 0.12f, 0.10f, 24.0f, 0.20f);
     drawBlock(x, y, z, 0.88f, 0.25f, 0.90f);
@@ -20,8 +25,8 @@ void drawSingleSeat(float x, float y, float z) {
 void drawSeatingSection(float startX, int cols) {
     const int rows = 12;
     for (int row = 0; row < rows; ++row) {
-        float zPos = -4.2f + row * 1.55f;
-        float yPos = 1.1f + row * 0.78f;
+        float zPos = kSeatStartZ + row * kRowSpacing;
+        float yPos = kSeatStartY + row * kRowRise;
         float sectionWidth = cols * 1.15f + 0.35f;
         float sectionCenterX = startX + (cols - 1) * 1.15f * 0.5f;
 
@@ -37,8 +42,8 @@ void drawSeatingSection(float startX, int cols) {
 
 void drawAisle(float centerX) {
     for (int row = 0; row < 12; ++row) {
-        float zPos = -4.2f + row * 1.55f;
-        float yPos = 1.1f + row * 0.78f;
+        float zPos = kSeatStartZ + row * kRowSpacing;
+        float yPos = kSeatStartY + row * kRowRise;
 
         setMaterial(0.35f, 0.35f, 0.36f, 9.0f, 0.05f);
         drawBlock(centerX, yPos - 0.44f, zPos, 1.05f, 0.90f, 1.52f);
