@@ -28,6 +28,84 @@ void normalizeVec3(float& x, float& y, float& z) {
     y /= length;
     z /= length;
 }
+
+void crossVec3(
+    float ax,
+    float ay,
+    float az,
+    float bx,
+    float by,
+    float bz,
+    float& rx,
+    float& ry,
+    float& rz
+) {
+    rx = ay * bz - az * by;
+    ry = az * bx - ax * bz;
+    rz = ax * by - ay * bx;
+}
+
+void computeForward(float yawDeg, float pitchDeg, float& x, float& y, float& z) {
+    float yawRad = yawDeg * kDegToRad;
+    float pitchRad = pitchDeg * kDegToRad;
+    float cosPitch = std::cos(pitchRad);
+
+    x = std::sin(yawRad) * cosPitch;
+    y = std::sin(pitchRad);
+    z = std::cos(yawRad) * cosPitch;
+    normalizeVec3(x, y, z);
+}
+
+void computeBasis(
+    float yawDeg,
+    float pitchDeg,
+    float& forwardX,
+    float& forwardY,
+    float& forwardZ,
+    float& rightX,
+    float& rightY,
+    float& rightZ,
+    float& upX,
+    float& upY,
+    float& upZ
+) {
+    computeForward(yawDeg, pitchDeg, forwardX, forwardY, forwardZ);
+
+    const float worldUpX = 0.0f;
+    const float worldUpY = 1.0f;
+    const float worldUpZ = 0.0f;
+
+    crossVec3(
+        forwardX,
+        forwardY,
+        forwardZ,
+        worldUpX,
+        worldUpY,
+        worldUpZ,
+        rightX,
+        rightY,
+        rightZ
+    );
+    normalizeVec3(rightX, rightY, rightZ);
+    if (rightX == 0.0f && rightY == 0.0f && rightZ == 0.0f) {
+        rightX = 1.0f;
+        rightY = 0.0f;
+        rightZ = 0.0f;
+    }
+
+    crossVec3(
+        rightX,
+        rightY,
+        rightZ,
+        forwardX,
+        forwardY,
+        forwardZ,
+        upX,
+        upY,
+        upZ
+    );
+    normalizeVec3(upX, upY, upZ);
+}
 }  // namespace
 
 Camera::Camera() {
@@ -35,51 +113,86 @@ Camera::Camera() {
 }
 
 void Camera::reset() {
-    targetX = 0.0f;
-    targetY = 6.0f;
-    targetZ = -7.0f;
-    distance = 34.0f;
-    yaw = 0.0f;
-    pitch = 10.0f;
+    posX = 0.0f;
+    posY = 11.9f;
+    posZ = 26.5f;
+    yaw = 180.0f;
+    pitch = -10.0f;
 }
 
 void Camera::clamp() {
-    distance = clampf(distance, 10.0f, 80.0f);
-    pitch = clampf(pitch, -8.0f, 80.0f);
-    targetY = clampf(targetY, 1.0f, 18.0f);
+    pitch = clampf(pitch, -85.0f, 85.0f);
 }
 
-void Camera::computePosition(float& x, float& y, float& z) const {
-    float yawRad = yaw * kDegToRad;
-    float pitchRad = pitch * kDegToRad;
-    float cosPitch = std::cos(pitchRad);
+void Camera::computeLookAt(
+    float& eyeX,
+    float& eyeY,
+    float& eyeZ,
+    float& centerX,
+    float& centerY,
+    float& centerZ,
+    float& upX,
+    float& upY,
+    float& upZ
+) const {
+    float forwardX, forwardY, forwardZ;
+    float rightX, rightY, rightZ;
+    computeBasis(
+        yaw,
+        pitch,
+        forwardX,
+        forwardY,
+        forwardZ,
+        rightX,
+        rightY,
+        rightZ,
+        upX,
+        upY,
+        upZ
+    );
 
-    x = targetX + distance * cosPitch * std::sin(yawRad);
-    y = targetY + distance * std::sin(pitchRad);
-    z = targetZ + distance * cosPitch * std::cos(yawRad);
+    eyeX = posX;
+    eyeY = posY;
+    eyeZ = posZ;
+    centerX = posX + forwardX;
+    centerY = posY + forwardY;
+    centerZ = posZ + forwardZ;
+}
+
+void Camera::moveLocal(float forwardDelta, float rightDelta, float upDelta) {
+    float forwardX, forwardY, forwardZ;
+    float rightX, rightY, rightZ;
+    float upX, upY, upZ;
+    computeBasis(
+        yaw,
+        pitch,
+        forwardX,
+        forwardY,
+        forwardZ,
+        rightX,
+        rightY,
+        rightZ,
+        upX,
+        upY,
+        upZ
+    );
+
+    posX += forwardX * forwardDelta + rightX * rightDelta + upX * upDelta;
+    posY += forwardY * forwardDelta + rightY * rightDelta + upY * upDelta;
+    posZ += forwardZ * forwardDelta + rightZ * rightDelta + upZ * upDelta;
+}
+
+void Camera::rotate(float yawDelta, float pitchDelta) {
+    yaw += yawDelta;
+    pitch += pitchDelta;
+    clamp();
+}
+
+void Camera::zoom(float amount) {
+    moveLocal(amount, 0.0f, 0.0f);
 }
 
 void Camera::pan(int dx, int dy) {
-    float camX, camY, camZ;
-    computePosition(camX, camY, camZ);
-
-    float forwardX = targetX - camX;
-    float forwardY = targetY - camY;
-    float forwardZ = targetZ - camZ;
-    normalizeVec3(forwardX, forwardY, forwardZ);
-
-    float rightX = -forwardZ;
-    float rightY = 0.0f;
-    float rightZ = forwardX;
-    normalizeVec3(rightX, rightY, rightZ);
-
-    float upX = rightY * forwardZ - rightZ * forwardY;
-    float upY = rightZ * forwardX - rightX * forwardZ;
-    float upZ = rightX * forwardY - rightY * forwardX;
-    normalizeVec3(upX, upY, upZ);
-
-    float panScale = distance * 0.0045f;
-    targetX += (-dx * panScale) * rightX + (dy * panScale) * upX;
-    targetY += (-dx * panScale) * rightY + (dy * panScale) * upY;
-    targetZ += (-dx * panScale) * rightZ + (dy * panScale) * upZ;
+    const float panScale = 0.02f;
+    moveLocal(0.0f, -dx * panScale, dy * panScale);
 }

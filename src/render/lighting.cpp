@@ -20,10 +20,12 @@ void initLighting() {
     glEnable(GL_LIGHT0);
     glEnable(GL_LIGHT1);
     glEnable(GL_LIGHT2);
+    glEnable(GL_LIGHT3);
 
     GLfloat globalAmbient[] = {0.14f, 0.14f, 0.17f, 1.0f};
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
     glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE);
+    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
 
     GLfloat keyAmbient[] = {0.07f, 0.06f, 0.05f, 1.0f};
     GLfloat keyDiffuse[] = {0.95f, 0.90f, 0.82f, 1.0f};
@@ -49,6 +51,16 @@ void initLighting() {
     glLightfv(GL_LIGHT2, GL_AMBIENT, fillAmbient);
     glLightfv(GL_LIGHT2, GL_DIFFUSE, fillDiffuse);
     glLightfv(GL_LIGHT2, GL_SPECULAR, fillSpecular);
+
+    // Subtle camera-aligned fill keeps seat backs readable from rear angles.
+    GLfloat viewFillAmbient[] = {0.02f, 0.02f, 0.02f, 1.0f};
+    GLfloat viewFillDiffuse[] = {0.20f, 0.19f, 0.18f, 1.0f};
+    GLfloat viewFillSpecular[] = {0.08f, 0.08f, 0.08f, 1.0f};
+    glLightfv(GL_LIGHT3, GL_AMBIENT, viewFillAmbient);
+    glLightfv(GL_LIGHT3, GL_DIFFUSE, viewFillDiffuse);
+    glLightfv(GL_LIGHT3, GL_SPECULAR, viewFillSpecular);
+    glLightf(GL_LIGHT3, GL_SPOT_CUTOFF, 95.0f);
+    glLightf(GL_LIGHT3, GL_SPOT_EXPONENT, 4.0f);
 }
 
 void positionLights() {
@@ -64,4 +76,9 @@ void positionLights() {
 
     GLfloat fillPos[] = {0.0f, 20.0f, 14.0f, 1.0f};
     glLightfv(GL_LIGHT2, GL_POSITION, fillPos);
+
+    GLfloat viewFillPos[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    GLfloat viewFillDir[] = {0.0f, 0.0f, -1.0f};
+    glLightfv(GL_LIGHT3, GL_POSITION, viewFillPos);
+    glLightfv(GL_LIGHT3, GL_SPOT_DIRECTION, viewFillDir);
 }

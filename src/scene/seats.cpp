@@ -11,15 +11,34 @@ const float kSeatStartY = 1.1f;
 const float kRowRise = 0.78f;
 
 void drawSingleSeat(float x, float y, float z) {
+    const float stepTopY = y + 0.02f;
+    // Raise the seat significantly so it attaches near the top of the riser wall
+    const float seatBaseY = stepTopY + 0.70f;
+
+    // The vertical riser of the step *behind* this seat is located exactly at z + 0.79.
+    // We extend the base and backrest all the way to this riser for a perfect, clean cantilever mount.
+    const float riserZ = z + 0.79f;
+
+    // Base depth extended from front to completely flush against the riser wall
+    const float baseDepth = 0.78f;
+    const float baseZ = riserZ - (baseDepth / 2.0f);
+
+    // Lifted seat base: underside remains fully open.
     setMaterial(0.78f, 0.12f, 0.10f, 24.0f, 0.20f);
-    drawBlock(x, y, z, 0.88f, 0.25f, 0.90f);
+    drawBlock(x, seatBaseY, baseZ, 0.84f, 0.16f, baseDepth);
 
+    // Straight backrest firmly attached to the riser.
+    const float backrestDepth = 0.16f;
+    const float backrestZ = riserZ - (backrestDepth / 2.0f);
     setMaterial(0.74f, 0.11f, 0.10f, 24.0f, 0.20f);
-    drawBlock(x, y + 0.63f, z + 0.34f, 0.88f, 1.05f, 0.22f);
+    drawBlock(x, seatBaseY + 0.50f, backrestZ, 0.80f, 0.94f, backrestDepth);
 
-    setMaterial(0.10f, 0.10f, 0.10f, 8.0f, 0.05f);
-    drawBlock(x - 0.45f, y + 0.22f, z, 0.08f, 0.36f, 0.82f);
-    drawBlock(x + 0.45f, y + 0.22f, z, 0.08f, 0.36f, 0.82f);
+    // Standard floating armrests extending straight back to the riser.
+    setMaterial(0.30f, 0.12f, 0.06f, 15.0f, 0.05f); 
+    // Left armrest
+    drawBlock(x - 0.44f, seatBaseY + 0.35f, baseZ, 0.08f, 0.10f, baseDepth);
+    // Right armrest
+    drawBlock(x + 0.44f, seatBaseY + 0.35f, baseZ, 0.08f, 0.10f, baseDepth);
 }
 
 void drawSeatingSection(float startX, int cols) {
@@ -37,6 +56,14 @@ void drawSeatingSection(float startX, int cols) {
             float xPos = startX + col * 1.15f;
             drawSingleSeat(xPos, yPos, zPos);
         }
+
+        // Draw a back wall for the very last row so it has something to attach to
+        if (row == rows - 1) {
+            float nextZPos = kSeatStartZ + (row + 1) * kRowSpacing;
+            float nextYPos = kSeatStartY + (row + 1) * kRowRise;
+            setMaterial(0.33f, 0.33f, 0.34f, 9.0f, 0.05f);
+            drawBlock(sectionCenterX, nextYPos - 0.45f, nextZPos, sectionWidth, 0.94f, 1.52f);
+        }
     }
 }
 
@@ -51,6 +78,14 @@ void drawAisle(float centerX) {
         if (row % 2 == 0) {
             setMaterial(1.0f, 0.86f, 0.36f, 45.0f, 0.35f, 0.50f);
             drawBlock(centerX, yPos - 0.02f, zPos + 0.58f, 0.20f, 0.05f, 0.08f);
+        }
+
+        // Draw back wall for the aisle at the last row
+        if (row == 11) {
+            float nextZPos = kSeatStartZ + (row + 1) * kRowSpacing;
+            float nextYPos = kSeatStartY + (row + 1) * kRowRise;
+            setMaterial(0.35f, 0.35f, 0.36f, 9.0f, 0.05f);
+            drawBlock(centerX, nextYPos - 0.44f, nextZPos, 1.05f, 0.90f, 1.52f);
         }
     }
 }
