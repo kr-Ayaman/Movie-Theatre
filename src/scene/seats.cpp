@@ -6,6 +6,8 @@
 
 #include <GL/glut.h>
 
+#include <cmath>
+
 namespace {
 
 const float kSeatStartZ = 0.0f;
@@ -29,26 +31,130 @@ void drawRoundedCushion(float x, float y, float z, float width, float height, fl
     glPopMatrix();
 }
 
+void setFaceNormal(
+    float ax,
+    float ay,
+    float az,
+    float bx,
+    float by,
+    float bz,
+    float cx,
+    float cy,
+    float cz
+) {
+    float ux = bx - ax;
+    float uy = by - ay;
+    float uz = bz - az;
+    float vx = cx - ax;
+    float vy = cy - ay;
+    float vz = cz - az;
+
+    float nx = uy * vz - uz * vy;
+    float ny = uz * vx - ux * vz;
+    float nz = ux * vy - uy * vx;
+
+    float length = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (length > 1e-6f) {
+        glNormal3f(nx / length, ny / length, nz / length);
+    } else {
+        glNormal3f(0.0f, 1.0f, 0.0f);
+    }
+}
+
+void drawArmrestTrapezoid(
+    float yBottom,
+    float yTopFront,
+    float yTopBack,
+    float zFront,
+    float zBack,
+    float topFrontInset,
+    float topBackInset,
+    float bottomWidth,
+    float topWidth
+) {
+    float xb0 = -bottomWidth * 0.5f;
+    float xb1 = bottomWidth * 0.5f;
+    float xt0 = -topWidth * 0.5f;
+    float xt1 = topWidth * 0.5f;
+
+    float ztf = zFront + topFrontInset;
+    float ztb = zBack - topBackInset;
+
+    glBegin(GL_QUADS);
+
+    // Front face
+    setFaceNormal(xb0, yBottom, zFront, xb1, yBottom, zFront, xt1, yTopFront, ztf);
+    glVertex3f(xb0, yBottom, zFront);
+    glVertex3f(xb1, yBottom, zFront);
+    glVertex3f(xt1, yTopFront, ztf);
+    glVertex3f(xt0, yTopFront, ztf);
+
+    // Back face
+    setFaceNormal(xb0, yBottom, zBack, xt0, yTopBack, ztb, xt1, yTopBack, ztb);
+    glVertex3f(xb0, yBottom, zBack);
+    glVertex3f(xt0, yTopBack, ztb);
+    glVertex3f(xt1, yTopBack, ztb);
+    glVertex3f(xb1, yBottom, zBack);
+
+    // Left face
+    setFaceNormal(xb0, yBottom, zFront, xb0, yBottom, zBack, xt0, yTopBack, ztb);
+    glVertex3f(xb0, yBottom, zFront);
+    glVertex3f(xb0, yBottom, zBack);
+    glVertex3f(xt0, yTopBack, ztb);
+    glVertex3f(xt0, yTopFront, ztf);
+
+    // Right face
+    setFaceNormal(xb1, yBottom, zFront, xt1, yTopFront, ztf, xt1, yTopBack, ztb);
+    glVertex3f(xb1, yBottom, zFront);
+    glVertex3f(xt1, yTopFront, ztf);
+    glVertex3f(xt1, yTopBack, ztb);
+    glVertex3f(xb1, yBottom, zBack);
+
+    // Bottom face
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(xb0, yBottom, zFront);
+    glVertex3f(xb0, yBottom, zBack);
+    glVertex3f(xb1, yBottom, zBack);
+    glVertex3f(xb1, yBottom, zFront);
+
+    // Top face
+    setFaceNormal(xt0, yTopFront, ztf, xt1, yTopFront, ztf, xt1, yTopBack, ztb);
+    glVertex3f(xt0, yTopFront, ztf);
+    glVertex3f(xt1, yTopFront, ztf);
+    glVertex3f(xt1, yTopBack, ztb);
+    glVertex3f(xt0, yTopBack, ztb);
+
+    glEnd();
+}
+
 void drawRowArmrest(float xCenter, float seatBaseY, float baseZ, float backrestZ, float baseDepth, float sideSign, bool isEdge) {
     float frontZ = baseZ - baseDepth * 0.49f;
     float rearZ = backrestZ + 0.09f;
-    float armCenterZ = (frontZ + rearZ) * 0.5f;
     float armDepth = (rearZ - frontZ) + 0.06f;
 
-    float xShift = isEdge ? sideSign * 0.006f : 0.0f;
+    float xShift = isEdge ? sideSign * 0.008f : 0.0f;
+    float edgeTilt = 0.0f;
 
     setSceneShaderEffect(kSceneShaderEffectCushion);
     setMaterial(0.64f, 0.11f, 0.10f, 18.0f, 0.08f);
 
-    // Clean simple armrest body.
-    drawBlock(xCenter + xShift, seatBaseY + 0.10f, armCenterZ, 0.095f, 0.18f, armDepth);
-
-    // Single sloped top face.
+    // Clean trapezoidal armrest body matching side-view theatre profile.
     glPushMatrix();
-    glTranslatef(xCenter + xShift, seatBaseY + 0.19f, armCenterZ);
-    glRotatef(-10.0f, 1.0f, 0.0f, 0.0f);
-    glScalef(0.12f, 0.05f, armDepth * 0.97f);
-    glutSolidCube(1.0f);
+    glTranslatef(xCenter + xShift, seatBaseY + 0.11f, (frontZ + rearZ) * 0.5f);
+    if (isEdge) {
+        glRotatef(edgeTilt, 0.0f, 0.0f, 1.0f);
+    }
+    drawArmrestTrapezoid(
+        -0.12f,
+        0.10f,
+        0.10f,
+        -armDepth * 0.36f,
+        armDepth * 0.5f,
+        -armDepth * 0.14f,
+        armDepth * 0.14f,
+        0.145f,
+        0.095f
+    );
     glPopMatrix();
 
     setSceneShaderEffect(kSceneShaderEffectDefault);
