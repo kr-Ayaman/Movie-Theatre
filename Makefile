@@ -6,6 +6,7 @@ SRC := \
 	src/main.cpp \
 	src/core/camera.cpp \
 	src/render/lighting.cpp \
+	src/render/shader.cpp \
 	src/render/primitives.cpp \
 	src/scene/room.cpp \
 	src/scene/stage.cpp \

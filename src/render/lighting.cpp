@@ -2,11 +2,18 @@
 
 #include <GL/glut.h>
 
+namespace {
+bool gCeilingLightsEnabled = true;
+}
+
 void setMaterial(float r, float g, float b, float shininess, float specularStrength, float emissionStrength) {
     GLfloat ambient[] = {r * 0.35f, g * 0.35f, b * 0.35f, 1.0f};
     GLfloat diffuse[] = {r, g, b, 1.0f};
     GLfloat specular[] = {specularStrength, specularStrength, specularStrength, 1.0f};
     GLfloat emission[] = {r * emissionStrength, g * emissionStrength, b * emissionStrength, 1.0f};
+
+    // Keep material-driven objects on the lighting branch in the shader.
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
     glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, ambient);
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, diffuse);
@@ -64,6 +71,14 @@ void initLighting() {
 }
 
 void positionLights() {
+    if (gCeilingLightsEnabled) {
+        glEnable(GL_LIGHT0);
+        glEnable(GL_LIGHT2);
+    } else {
+        glDisable(GL_LIGHT0);
+        glDisable(GL_LIGHT2);
+    }
+
     GLfloat keyPos[] = {0.0f, 20.0f, -8.0f, 1.0f};
     GLfloat keyDir[] = {0.0f, -1.0f, -0.25f};
     glLightfv(GL_LIGHT0, GL_POSITION, keyPos);
@@ -81,4 +96,12 @@ void positionLights() {
     GLfloat viewFillDir[] = {0.0f, 0.0f, -1.0f};
     glLightfv(GL_LIGHT3, GL_POSITION, viewFillPos);
     glLightfv(GL_LIGHT3, GL_SPOT_DIRECTION, viewFillDir);
+}
+
+void setCeilingLightsEnabled(bool enabled) {
+    gCeilingLightsEnabled = enabled;
+}
+
+bool areCeilingLightsEnabled() {
+    return gCeilingLightsEnabled;
 }

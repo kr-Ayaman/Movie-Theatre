@@ -115,7 +115,7 @@ Camera::Camera() {
 void Camera::reset() {
     posX = 0.0f;
     posY = 11.9f;
-    posZ = 26.5f;
+    posZ = 18.0f;
     yaw = 180.0f;
     pitch = -10.0f;
 }

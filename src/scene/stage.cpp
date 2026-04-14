@@ -2,6 +2,7 @@
 
 #include "render/lighting.h"
 #include "render/primitives.h"
+#include "render/shader.h"
 
 #include <GL/glut.h>
 
@@ -70,6 +71,8 @@ void drawCurtain(bool leftSide) {
     float side = leftSide ? -1.0f : 1.0f;
     float startX = leftSide ? -13.3f : 13.3f;
 
+    setSceneShaderEffect(kSceneShaderEffectCurtain);
+
     for (int fold = 0; fold < 9; ++fold) {
         float offset = fold * 0.62f * side;
         float depthWave = std::sin(fold * 0.9f) * 0.35f;
@@ -77,6 +80,8 @@ void drawCurtain(bool leftSide) {
         setMaterial(0.07f, tint, 0.52f, 45.0f, 0.30f);
         drawBlock(startX + offset, 8.5f, -10.8f + depthWave, 0.55f, 14.5f, 1.25f);
     }
+
+    setSceneShaderEffect(kSceneShaderEffectDefault);
 }
 
 void drawBeanBag(float x, float z) {
@@ -91,14 +96,19 @@ void drawBeanBag(float x, float z) {
 }  // namespace
 
 void drawStageAndScreen() {
-    setMaterial(0.36f, 0.24f, 0.17f, 30.0f, 0.15f);
+    setSceneShaderEffect(kSceneShaderEffectDefault);
+
+    setSceneShaderEffect(kSceneShaderEffectBrick);
+    setMaterial(0.70f, 0.72f, 0.74f, 16.0f, 0.08f);
     drawBlock(0.0f, 1.5f, -14.0f, 28.0f, 2.0f, 12.0f);
     drawBlock(0.0f, 0.6f, -7.4f, 23.0f, 0.6f, 2.6f);
 
-    setMaterial(0.10f, 0.11f, 0.13f, 18.0f, 0.20f);
+    setMaterial(0.66f, 0.68f, 0.70f, 14.0f, 0.07f);
     drawBlock(-14.2f, 8.6f, -11.6f, 1.2f, 15.2f, 1.5f);
     drawBlock(14.2f, 8.6f, -11.6f, 1.2f, 15.2f, 1.5f);
     drawBlock(0.0f, 15.5f, -11.6f, 30.0f, 1.3f, 1.5f);
+
+    setSceneShaderEffect(kSceneShaderEffectDefault);
 
     setMaterial(0.08f, 0.09f, 0.10f, 15.0f, 0.16f);
     drawBlock(0.0f, 9.2f, -19.6f, 24.7f, 11.6f, 0.90f);

@@ -6,6 +6,7 @@
 
 #include "core/camera.h"
 #include "render/lighting.h"
+#include "render/shader.h"
 #include "scene/room.h"
 #include "scene/seats.h"
 #include "scene/stage.h"
@@ -122,9 +123,12 @@ void display() {
     );
 
     positionLights();
+    enableSceneShader();
+    setSceneShaderEffect(kSceneShaderEffectDefault);
     drawRoom();
     drawStageAndScreen();
     drawSeats();
+    disableSceneShader();
 
     glutSwapBuffers();
 }
@@ -165,6 +169,10 @@ void keyboardDown(unsigned char key, int, int) {
         glutPostRedisplay();
     } else if (lower == 'x') {
         gCamera.zoom(-1.0f);
+        glutPostRedisplay();
+    } else if (lower == 'l') {
+        toggleCeilingLights();
+        setCeilingLightsEnabled(areCeilingLightsVisible());
         glutPostRedisplay();
     }
 }
@@ -235,6 +243,8 @@ void init() {
     glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST);
 
     initLighting();
+    setCeilingLightsEnabled(areCeilingLightsVisible());
+    initSceneShader();
 }
 
 }  // namespace
