@@ -100,10 +100,15 @@ void idle() {
     gCamera.moveLocal(gForwardVel * dt, gRightVel * dt, gUpVel * dt);
     gCamera.rotate(gYawVel * dt, gPitchVel * dt);
 
+    updateStageVideo();
+
     if (std::fabs(gForwardVel) > 0.001f || std::fabs(gRightVel) > 0.001f || std::fabs(gUpVel) > 0.001f ||
         std::fabs(gYawVel) > 0.001f || std::fabs(gPitchVel) > 0.001f) {
         glutPostRedisplay();
     }
+
+    // Redraw continuously while video is playing so the screen updates.
+    glutPostRedisplay();
 }
 
 void display() {
@@ -125,6 +130,9 @@ void display() {
     positionLights();
     enableSceneShader();
     setSceneShaderEffect(kSceneShaderEffectDefault);
+    
+    updateStageVideo();
+    
     drawRoom();
     drawStageAndScreen();
     drawSeats();
@@ -253,10 +261,13 @@ int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
     glutInitWindowSize(1100, 700);
-    glutCreateWindow("OpenGL Theatre - Modular Scene");
+    glutCreateWindow("OpenGL Theatre - Video Player");
 
     init();
     gLastFrameTimeMs = glutGet(GLUT_ELAPSED_TIME);
+
+    // Load and initialize video
+    initStageVideo("14422313_4096_2160_60fps.mp4");
 
     glutDisplayFunc(display);
     glutReshapeFunc(reshape);

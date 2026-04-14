@@ -3,65 +3,104 @@
 #include "render/lighting.h"
 #include "render/primitives.h"
 #include "render/shader.h"
+#include "render/video.h"
 
 #include <GL/glut.h>
 
 #include <cmath>
+#include <memory>
 
 namespace {
 const float kPi = 3.14159265f;
+
+std::unique_ptr<VideoPlayer> gVideoPlayer = nullptr;
 
 void drawScreenContent() {
     glDisable(GL_LIGHTING);
     glPushMatrix();
     glTranslatef(0.0f, 9.2f, -19.04f);
 
-    glBegin(GL_QUADS);
-    glColor3f(0.03f, 0.06f, 0.13f);
-    glVertex3f(-11.0f, -4.7f, 0.0f);
-    glColor3f(0.07f, 0.16f, 0.32f);
-    glVertex3f(11.0f, -4.7f, 0.0f);
-    glColor3f(0.16f, 0.28f, 0.55f);
-    glVertex3f(11.0f, 4.7f, 0.0f);
-    glColor3f(0.07f, 0.12f, 0.25f);
-    glVertex3f(-11.0f, 4.7f, 0.0f);
-    glEnd();
+    // When ceiling lights are on, the screen should remain black.
+    if (areCeilingLightsEnabled()) {
+        glColor3f(0.0f, 0.0f, 0.0f);
+        glBegin(GL_QUADS);
+        glVertex3f(-11.0f, -4.7f, 0.0f);
+        glVertex3f(11.0f, -4.7f, 0.0f);
+        glVertex3f(11.0f, 4.7f, 0.0f);
+        glVertex3f(-11.0f, 4.7f, 0.0f);
+        glEnd();
+    } else if (gVideoPlayer && gVideoPlayer->isLoaded()) {
+        disableSceneShader();
 
-    drawSoftCircle(-4.5f, 1.6f, 3.3f, 0.38f, 0.20f, 0.74f, 0.42f);
-    drawSoftCircle(2.8f, 0.8f, 3.8f, 0.10f, 0.58f, 0.86f, 0.40f);
-    drawSoftCircle(1.3f, -1.7f, 2.9f, 0.66f, 0.14f, 0.70f, 0.36f);
-    drawSoftCircle(-1.4f, 2.8f, 2.3f, 0.20f, 0.80f, 0.98f, 0.30f);
+        glEnable(GL_TEXTURE_2D);
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+        glBindTexture(GL_TEXTURE_2D, gVideoPlayer->getTextureId());
 
-    glColor4f(0.03f, 0.03f, 0.05f, 0.94f);
-    glBegin(GL_POLYGON);
-    glVertex3f(-0.4f, -0.8f, 0.01f);
-    glVertex3f(0.0f, 0.2f, 0.01f);
-    glVertex3f(0.7f, 1.3f, 0.01f);
-    glVertex3f(1.4f, 1.8f, 0.01f);
-    glVertex3f(2.0f, 1.2f, 0.01f);
-    glVertex3f(1.7f, 0.3f, 0.01f);
-    glVertex3f(1.0f, -0.5f, 0.01f);
-    glVertex3f(0.2f, -1.0f, 0.01f);
-    glEnd();
+        glColor3f(1.0f, 1.0f, 1.0f);
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(-11.0f, -4.7f, 0.0f);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(11.0f, -4.7f, 0.0f);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(11.0f, 4.7f, 0.0f);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(-11.0f, 4.7f, 0.0f);
+        glEnd();
 
-    glColor4f(0.03f, 0.03f, 0.05f, 0.94f);
-    glBegin(GL_POLYGON);
-    glVertex3f(-2.8f, -0.9f, 0.01f);
-    glVertex3f(-2.2f, 0.5f, 0.01f);
-    glVertex3f(-1.7f, 1.9f, 0.01f);
-    glVertex3f(-1.1f, 1.4f, 0.01f);
-    glVertex3f(-1.2f, 0.3f, 0.01f);
-    glVertex3f(-1.7f, -0.7f, 0.01f);
-    glEnd();
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
 
-    glColor4f(0.50f, 0.66f, 0.88f, 0.18f);
-    glBegin(GL_LINES);
-    for (int i = 0; i < 20; ++i) {
-        float y = -4.4f + i * 0.45f;
-        glVertex3f(-10.8f, y, 0.02f);
-        glVertex3f(10.8f, y + 0.08f, 0.02f);
+        enableSceneShader();
+    } else {
+        // Default content with animated circles
+        glBegin(GL_QUADS);
+        glColor3f(0.03f, 0.06f, 0.13f);
+        glVertex3f(-11.0f, -4.7f, 0.0f);
+        glColor3f(0.07f, 0.16f, 0.32f);
+        glVertex3f(11.0f, -4.7f, 0.0f);
+        glColor3f(0.16f, 0.28f, 0.55f);
+        glVertex3f(11.0f, 4.7f, 0.0f);
+        glColor3f(0.07f, 0.12f, 0.25f);
+        glVertex3f(-11.0f, 4.7f, 0.0f);
+        glEnd();
+
+        drawSoftCircle(-4.5f, 1.6f, 3.3f, 0.38f, 0.20f, 0.74f, 0.42f);
+        drawSoftCircle(2.8f, 0.8f, 3.8f, 0.10f, 0.58f, 0.86f, 0.40f);
+        drawSoftCircle(1.3f, -1.7f, 2.9f, 0.66f, 0.14f, 0.70f, 0.36f);
+        drawSoftCircle(-1.4f, 2.8f, 2.3f, 0.20f, 0.80f, 0.98f, 0.30f);
+
+        glColor4f(0.03f, 0.03f, 0.05f, 0.94f);
+        glBegin(GL_POLYGON);
+        glVertex3f(-0.4f, -0.8f, 0.01f);
+        glVertex3f(0.0f, 0.2f, 0.01f);
+        glVertex3f(0.7f, 1.3f, 0.01f);
+        glVertex3f(1.4f, 1.8f, 0.01f);
+        glVertex3f(2.0f, 1.2f, 0.01f);
+        glVertex3f(1.7f, 0.3f, 0.01f);
+        glVertex3f(1.0f, -0.5f, 0.01f);
+        glVertex3f(0.2f, -1.0f, 0.01f);
+        glEnd();
+
+        glColor4f(0.03f, 0.03f, 0.05f, 0.94f);
+        glBegin(GL_POLYGON);
+        glVertex3f(-2.8f, -0.9f, 0.01f);
+        glVertex3f(-2.2f, 0.5f, 0.01f);
+        glVertex3f(-1.7f, 1.9f, 0.01f);
+        glVertex3f(-1.1f, 1.4f, 0.01f);
+        glVertex3f(-1.2f, 0.3f, 0.01f);
+        glVertex3f(-1.7f, -0.7f, 0.01f);
+        glEnd();
+
+        glColor4f(0.50f, 0.66f, 0.88f, 0.18f);
+        glBegin(GL_LINES);
+        for (int i = 0; i < 20; ++i) {
+            float y = -4.4f + i * 0.45f;
+            glVertex3f(-10.8f, y, 0.02f);
+            glVertex3f(10.8f, y + 0.08f, 0.02f);
+        }
+        glEnd();
     }
-    glEnd();
 
     glPopMatrix();
     glEnable(GL_LIGHTING);
@@ -122,4 +161,17 @@ void drawStageAndScreen() {
 
     drawBeanBag(-1.8f, -8.2f);
     drawBeanBag(1.8f, -8.3f);
+}
+
+void initStageVideo(const std::string& videoPath) {
+    if (!gVideoPlayer) {
+        gVideoPlayer = std::make_unique<VideoPlayer>();
+    }
+    gVideoPlayer->loadVideo(videoPath);
+}
+
+void updateStageVideo() {
+    if (gVideoPlayer && gVideoPlayer->isLoaded()) {
+        gVideoPlayer->updateFrame();
+    }
 }

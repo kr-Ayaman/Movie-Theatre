@@ -71,6 +71,76 @@ void drawSpeakerDetailed(float width, float height, float depth, bool faceX) {
     }
 }
 
+void drawSignLetterE(float x, float y, float z, bool lit) {
+    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+    drawBlock(x, y, z, 0.08f, 0.60f, 0.10f);
+    drawBlock(x, y + 0.22f, z + 0.15f, 0.08f, 0.10f, 0.60f);
+    drawBlock(x, y, z + 0.15f, 0.08f, 0.10f, 0.60f);
+    drawBlock(x, y - 0.22f, z + 0.15f, 0.08f, 0.10f, 0.60f);
+}
+
+void drawSignLetterI(float x, float y, float z, bool lit) {
+    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+    drawBlock(x, y, z, 0.08f, 0.60f, 0.10f);
+}
+
+void drawSignLetterT(float x, float y, float z, bool lit) {
+    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+    drawBlock(x, y + 0.25f, z, 0.10f, 0.10f, 0.60f);
+    drawBlock(x, y - 0.05f, z, 0.08f, 0.50f, 0.10f);
+}
+
+void drawSignLetterX(float x, float y, float z, bool lit) {
+    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glRotatef(45.0f, 1.0f, 0.0f, 0.0f);
+    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.38f, 0.10f);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glRotatef(-45.0f, 1.0f, 0.0f, 0.0f);
+    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.38f, 0.10f);
+    glPopMatrix();
+}
+
+void drawExitDoor(bool lit) {
+    float doorX = 16.45f;
+    float doorY = 2.60f; // bottom sits on the ground
+    float doorZ = -4.20f; // move the door further forward ahead of the front row
+
+    setSceneShaderEffect(kSceneShaderEffectDefault);
+    setMaterial(0.08f, 0.08f, 0.10f, 12.0f, 0.06f, 0.05f);
+    drawBlock(doorX, doorY, doorZ, 0.14f, 5.20f, 3.40f);
+
+    setMaterial(0.04f, 0.05f, 0.06f, 8.0f, 0.04f, lit ? 0.40f : 0.08f);
+    drawBlock(doorX - 0.03f, doorY, doorZ, 0.06f, 4.80f, 2.80f);
+
+    if (lit) {
+        setMaterial(0.0f, 0.80f, 0.0f, 10.0f, 0.30f, 1.0f);
+    } else {
+        setMaterial(0.0f, 0.25f, 0.0f, 10.0f, 0.10f, 0.15f);
+    }
+    drawBlock(doorX + 0.08f, doorY, doorZ, 0.03f, 5.20f, 3.20f);
+
+    float signX = doorX + 0.14f;
+    float signY = doorY + 3.70f;
+    float signZ = doorZ;
+    setMaterial(0.02f, 0.02f, 0.02f, 4.0f, 0.03f, 0.0f);
+    drawBlock(signX - 0.02f, signY, signZ, 0.18f, 0.80f, 4.20f);
+
+    float letterX = signX + 0.06f;
+    float letterTopY = signY;
+    float letterZ0 = signZ - 1.70f;
+    float letterGap = 1.05f;
+
+    drawSignLetterE(letterX, letterTopY, letterZ0, lit);
+    drawSignLetterX(letterX, letterTopY, letterZ0 + letterGap, lit);
+    drawSignLetterI(letterX, letterTopY, letterZ0 + 2.05f, lit);
+    drawSignLetterT(letterX, letterTopY, letterZ0 + 3.05f, lit);
+}
+
 void drawWallSpeakers() {
     setSceneShaderEffect(kSceneShaderEffectDefault);
 
@@ -122,6 +192,7 @@ void drawRoom() {
     drawBlock(0.0f, -0.2f, 0.0f, 34.0f, 0.6f, 48.0f);
 
     drawSimpleWalls();
+    drawExitDoor(gCeilingLightsVisible);
     drawCeilingSurface();
     drawWallSpeakers();
 
