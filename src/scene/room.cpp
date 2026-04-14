@@ -57,6 +57,62 @@ void drawCeilingLights() {
     }
 }
 
+void drawSpeakerDetailed(float width, float height, float depth, bool faceX) {
+    // Main speaker casing
+    setMaterial(0.05f, 0.05f, 0.06f, 20.0f, 0.15f);
+    drawBlock(0.0f, 0.0f, 0.0f, width, height, depth);
+    
+    // Front grill/fabric (darker, unreflective)
+    setMaterial(0.02f, 0.02f, 0.02f, 5.0f, 0.02f);
+    if (faceX) {
+        drawBlock(width * 0.46f, 0.0f, 0.0f, 0.12f, height * 0.88f, depth * 0.88f);
+    } else {
+        drawBlock(0.0f, 0.0f, -depth * 0.46f, width * 0.88f, height * 0.88f, 0.12f);
+    }
+}
+
+void drawWallSpeakers() {
+    setSceneShaderEffect(kSceneShaderEffectDefault);
+
+    // Side walls: 6 speakers on each side
+    for (float z = -12.0f; z <= 18.0f; z += 6.0f) {
+        // Calculate a dynamic height that follows the slope of the stadium seating
+        float yHeight = 8.5f;
+        if (z > 0.0f) {
+            yHeight += (z / 1.55f) * 0.78f; // Follow the rise/run of the seats
+        }
+
+        // Left wall speaker
+        glPushMatrix();
+        glTranslatef(-16.6f, yHeight, z);
+        glRotatef(12.0f, 0.0f, 1.0f, 0.0f); // turn inwards slightly towards screen
+        glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); // tilt down towards audience
+        drawSpeakerDetailed(0.5f, 1.6f, 1.0f, true);
+        glPopMatrix();
+
+        // Right wall speaker
+        glPushMatrix();
+        glTranslatef(16.6f, yHeight, z);
+        glRotatef(-12.0f, 0.0f, 1.0f, 0.0f); // turn inwards slightly towards screen
+        glRotatef(15.0f, 0.0f, 0.0f, 1.0f); // tilt down towards audience
+        glRotatef(180.0f, 0.0f, 1.0f, 0.0f); // flip so face points into room
+        drawSpeakerDetailed(0.5f, 1.6f, 1.0f, true);
+        glPopMatrix();
+    }
+
+    // Back wall: 3 speakers
+    // The top row of seats is high up, so the back wall speakers need to be proportionally higher
+    float backWallHeight = 8.5f + (21.6f / 1.55f) * 0.78f;
+    float backX[] = {-8.0f, 0.0f, 8.0f};
+    for (float x : backX) {
+        glPushMatrix();
+        glTranslatef(x, backWallHeight, 21.6f);
+        glRotatef(20.0f, 1.0f, 0.0f, 0.0f); // tilt down more heavily into room
+        drawSpeakerDetailed(1.0f, 1.6f, 0.5f, false);
+        glPopMatrix();
+    }
+}
+
 }  // namespace
 
 void drawRoom() {
@@ -67,6 +123,7 @@ void drawRoom() {
 
     drawSimpleWalls();
     drawCeilingSurface();
+    drawWallSpeakers();
 
     for (int plank = 0; plank < 18; ++plank) {
         float z = -20.0f + plank * 2.3f;

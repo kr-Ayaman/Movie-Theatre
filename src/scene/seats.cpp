@@ -17,17 +17,61 @@ const float kRowRise = 0.78f;
 const float kSeatSpacing = 1.00f;
 
 void drawRoundedCushion(float x, float y, float z, float width, float height, float depth) {
+    auto sign = [](float val) { return (val > 0.0f) ? 1.0f : ((val < 0.0f) ? -1.0f : 0.0f); };
+    auto spow = [sign](float val, float p) { return sign(val) * std::pow(std::fabs(val), p); };
+
+    float hw = width * 0.5f;
+    float hh = height * 0.5f;
+    float hd = depth * 0.5f;
+    float n = 0.25f; // Roundness exponent: 1.0 is sphere, 0.0 is perfect box
+    int res = 20;
+
     glPushMatrix();
     glTranslatef(x, y, z);
-    glScalef(width * 0.5f, height * 0.5f, depth * 0.5f);
-    glutSolidSphere(1.0, 32, 24);
-    glPopMatrix();
+    
+    // Explicit white color to force fragment shader's lighting branch
+    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 
-    // Secondary lobe gives a plush cushion profile without introducing hard edges.
-    glPushMatrix();
-    glTranslatef(x, y - height * 0.12f, z - depth * 0.09f);
-    glScalef(width * 0.40f, height * 0.24f, depth * 0.34f);
-    glutSolidSphere(1.0, 28, 20);
+    for (int i = 0; i < res; ++i) {
+        float u1 = -M_PI / 2.0f + (float)i / res * M_PI;
+        float u2 = -M_PI / 2.0f + (float)(i + 1) / res * M_PI;
+
+        glBegin(GL_QUAD_STRIP);
+        for (int j = 0; j <= res * 2; ++j) {
+            // Reverse v traversal to ensure CCW winding order! 
+            // Important so gl_FrontFacing is true and normals point towards light!
+            float v = M_PI - (float)j / (res * 2) * 2.0f * M_PI;
+
+            for (int k = 0; k < 2; ++k) {
+                float u = (k == 0) ? u2 : u1;
+                float cu = std::cos(u);
+                float su = std::sin(u);
+                float cv = std::cos(v);
+                float sv = std::sin(v);
+
+                // Fix precision issues at the poles that cause star-like shadow artifacts
+                if (std::abs(cu) < 1e-4f) { cu = 0.0f; }
+
+                float nx = spow(cu, 2.0f - n) * spow(cv, 2.0f - n) / hw;
+                float ny = spow(su, 2.0f - n) / hh;
+                float nz = spow(cu, 2.0f - n) * spow(sv, 2.0f - n) / hd;
+
+                float len = std::sqrt(nx*nx + ny*ny + nz*nz);
+                if (len > 0.0001f) {
+                    glNormal3f(nx/len, ny/len, nz/len);
+                } else {
+                    glNormal3f(0.0f, 1.0f, 0.0f);
+                }
+
+                float px = hw * spow(cu, n) * spow(cv, n);
+                float py = hh * spow(su, n);
+                float pz = hd * spow(cu, n) * spow(sv, n);
+
+                glVertex3f(px, py, pz);
+            }
+        }
+        glEnd();
+    }
     glPopMatrix();
 }
 
@@ -140,20 +184,20 @@ void drawRowArmrest(float xCenter, float seatBaseY, float baseZ, float backrestZ
 
     // Clean trapezoidal armrest body matching side-view theatre profile.
     glPushMatrix();
-    glTranslatef(xCenter + xShift, seatBaseY + 0.11f, (frontZ + rearZ) * 0.5f);
+    glTranslatef(xCenter + xShift, seatBaseY + 0.34f, (frontZ + rearZ) * 0.5f);
     if (isEdge) {
         glRotatef(edgeTilt, 0.0f, 0.0f, 1.0f);
     }
     drawArmrestTrapezoid(
-        -0.12f,
+        -0.35f,
         0.10f,
         0.10f,
         -armDepth * 0.36f,
         armDepth * 0.5f,
         -armDepth * 0.14f,
         armDepth * 0.14f,
-        0.145f,
-        0.095f
+        0.11f,
+        0.08f
     );
     glPopMatrix();
 
@@ -171,7 +215,8 @@ void drawSingleSeat(float x, float y, float z) {
 
     setSceneShaderEffect(kSceneShaderEffectCushion);
     setMaterial(0.78f, 0.12f, 0.10f, 24.0f, 0.20f);
-    drawRoundedCushion(x, seatBaseY + 0.02f, baseZ, 0.86f, 0.28f, 0.82f);
+    // Increased base width and depth to stretch the seat out further, while leaving room for armrests
+    drawRoundedCushion(x, seatBaseY + 0.02f, baseZ - 0.05f, 0.86f, 0.28f, 0.98f);
 
     const float backrestDepth = 0.18f;
     const float backrestZ = riserZ - (backrestDepth / 2.0f);
@@ -189,8 +234,11 @@ void drawSeatingSection(float startX, int cols) {
         float sectionWidth = cols * kSeatSpacing + 0.60f;
         float sectionCenterX = startX + (cols - 1) * kSeatSpacing * 0.5f;
 
-        setMaterial(0.33f, 0.33f, 0.34f, 9.0f, 0.05f);
+        // Apply a dark grey architectural tile/brick shader to the stadium riser structure
+        setSceneShaderEffect(kSceneShaderEffectBrick);
+        setMaterial(0.20f, 0.21f, 0.22f, 12.0f, 0.08f);
         drawBlock(sectionCenterX, yPos - 0.45f, zPos, sectionWidth, 0.94f, 1.52f);
+        setSceneShaderEffect(kSceneShaderEffectDefault);
 
         for (int col = 0; col < cols; ++col) {
             float xPos = startX + col * kSeatSpacing;
@@ -216,42 +264,75 @@ void drawSeatingSection(float startX, int cols) {
         if (row == rows - 1) {
             float nextZPos = kSeatStartZ + (row + 1) * kRowSpacing;
             float nextYPos = kSeatStartY + (row + 1) * kRowRise;
-            setMaterial(0.33f, 0.33f, 0.34f, 9.0f, 0.05f);
+            
+            // Apply the same shader to the final back wall of the seating structure
+            setSceneShaderEffect(kSceneShaderEffectBrick);
+            setMaterial(0.20f, 0.21f, 0.22f, 12.0f, 0.08f);
             drawBlock(sectionCenterX, nextYPos - 0.45f, nextZPos, sectionWidth, 0.94f, 1.52f);
+            setSceneShaderEffect(kSceneShaderEffectDefault);
         }
     }
 }
 
-void drawAisle(float centerX) {
+void drawAisle(float centerX, float width) {
+    // The previous brick shader aggressively darkens materials by 0.3x.
+    // Switching to the Cushion shader so it keeps the material's actual brightness while looking like a woven carpet.
+    setSceneShaderEffect(kSceneShaderEffectCushion); 
     for (int row = 0; row < 12; ++row) {
         float zPos = kSeatStartZ + row * kRowSpacing;
         float yPos = kSeatStartY + row * kRowRise;
 
-        setMaterial(0.35f, 0.35f, 0.36f, 9.0f, 0.05f);
-        drawBlock(centerX, yPos - 0.44f, zPos, 1.05f, 0.90f, 1.52f);
+        // Instead of one big block, draw 2 stairs per row
+        float stepDepth = kRowSpacing / 2.0f;
+        float stepRise = kRowRise / 2.0f;
+        
+        for (int step = 0; step < 2; ++step) {
+            float stepZ = zPos - (kRowSpacing / 2.0f) + stepDepth / 2.0f + step * stepDepth;
+            float stepY = yPos - kRowRise + stepRise + step * stepRise - 0.44f;
+            
+            // Deep navy/midnight blue carpet color, bright enough to be visible and not pitch black
+            setMaterial(0.12f, 0.15f, 0.25f, 10.0f, 0.04f);
+            drawBlock(centerX, stepY, stepZ, width, 0.90f, stepDepth);
+        }
 
+        // Keep the little aisle lights
         if (row % 2 == 0) {
+            setSceneShaderEffect(kSceneShaderEffectDefault);
             setMaterial(1.0f, 0.86f, 0.36f, 45.0f, 0.35f, 0.50f);
             drawBlock(centerX, yPos - 0.02f, zPos + 0.58f, 0.20f, 0.05f, 0.08f);
+            setSceneShaderEffect(kSceneShaderEffectCushion);
         }
 
         // Draw back wall for the aisle at the last row
         if (row == 11) {
             float nextZPos = kSeatStartZ + (row + 1) * kRowSpacing;
             float nextYPos = kSeatStartY + (row + 1) * kRowRise;
-            setMaterial(0.35f, 0.35f, 0.36f, 9.0f, 0.05f);
-            drawBlock(centerX, nextYPos - 0.44f, nextZPos, 1.05f, 0.90f, 1.52f);
+            setMaterial(0.12f, 0.15f, 0.25f, 10.0f, 0.04f);
+            drawBlock(centerX, nextYPos - 0.44f, nextZPos, width, 0.90f, stepDepth);
         }
     }
+    setSceneShaderEffect(kSceneShaderEffectDefault);
 }
 
 }  // namespace
 
 void drawSeats() {
-    drawSeatingSection(-12.6f, 6);
+    // Added 1 seat to the far left (cols 6->7, startX -12.6 -> -13.6)
+    drawSeatingSection(-13.6f, 7);
     drawSeatingSection(-4.25f, 9);
-    drawSeatingSection(7.2f, 6);
+    // Added 1 seat to the far right (cols 6->7, startX 7.2 remains same, expands right)
+    drawSeatingSection(7.2f, 7);
 
-    drawAisle(-5.6f);
-    drawAisle(6.1f);
+    // Dynamic width for Aisles - utilizing the full vacant space!
+    // Left aisle gap: -6.8 to -5.05. Width = 1.75. Center = -5.925.
+    drawAisle(-5.925f, 1.75f);
+    
+    // Right aisle gap: 4.55 to 6.4. Width = 1.85. Center = 5.475.
+    drawAisle(5.475f, 1.85f);
+    
+    // Far left wall stairs. Room inner wall is ~-16.7. Leftmost block edge is -14.4. Gap=2.3, center=-15.55.
+    drawAisle(-15.55f, 2.3f);
+
+    // Far right wall stairs. Rightmost block edge is 14.0. Room inner wall is ~16.7. Gap=2.7, center=15.35.
+    drawAisle(15.35f, 2.7f);
 }
