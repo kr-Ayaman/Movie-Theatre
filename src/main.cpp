@@ -1,4 +1,6 @@
+#define GL_GLEXT_PROTOTYPES
 #include <GL/glut.h>
+#include <GL/glext.h>
 
 #include <cmath>
 #include <cctype>
@@ -10,6 +12,7 @@
 #include "scene/room.h"
 #include "scene/seats.h"
 #include "scene/stage.h"
+#include "core/math_utils.h"
 
 namespace {
 Camera gCamera;
@@ -29,6 +32,12 @@ float gYawVel = 0.0f;
 float gPitchVel = 0.0f;
 
 int gLastFrameTimeMs = 0;
+
+GLuint gDepthMapFBO;
+GLuint gDepthMap;
+const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
+float gLightSpaceMatrix[16];
+float gInverseViewMatrix[16];
 
 float smoothApproach(float current, float target, float response, float dt) {
     float t = 1.0f - std::exp(-response * dt);
@@ -111,31 +120,94 @@ void idle() {
     glutPostRedisplay();
 }
 
+void renderScene() {
+    drawRoom();
+    drawStageAndScreen();
+    drawSeats();
+}
+
 void display() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    updateStageVideo();
 
     float eyeX, eyeY, eyeZ;
     float centerX, centerY, centerZ;
     float upX, upY, upZ;
     gCamera.computeLookAt(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ);
 
-    gluLookAt(
-        eyeX, eyeY, eyeZ,
-        centerX, centerY, centerZ,
-        upX, upY, upZ
-    );
+    computeInverseViewMatrix(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ, gInverseViewMatrix);
+
+    float lightPos[3] = {0.0f, 30.0f, 0.0f}; // Moved high up center for orthogonal shadows
+
+    // 1. Render depth of scene to texture (from light's perspective)
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    glBindFramebuffer(GL_FRAMEBUFFER, gDepthMapFBO);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    glOrtho(-30.0f, 30.0f, -40.0f, 40.0f, 1.0f, 60.0f);
+    
+    float lightProjMat[16];
+    glGetFloatv(GL_PROJECTION_MATRIX, lightProjMat);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+    gluLookAt(0.0f, 25.0f, 0.0f, // high above center
+              0.0f, 0.0f, 0.0f,
+              0.0f, 0.0f, -1.0f); // Up vector points -z since we look -y
+              
+    float lightViewMat[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, lightViewMat);
+
+    // Compute LightSpaceMatrix = Proj * View
+    for (int i=0; i<4; ++i) {
+        for (int j=0; j<4; ++j) {
+            gLightSpaceMatrix[i*4 + j] = 0;
+            for (int k=0; k<4; ++k) {
+                gLightSpaceMatrix[i*4 + j] += lightProjMat[k*4 + j] * lightViewMat[i*4 + k];
+            }
+        }
+    }
+
+    renderScene();
+
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // 2. Render scene as normal
+    int w = glutGet(GLUT_WINDOW_WIDTH);
+    int h = glutGet(GLUT_WINDOW_HEIGHT);
+    glViewport(0, 0, w, h);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(52.0f, (float)w / (float)h, 0.1f, 180.0f);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    gluLookAt(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ);
 
     positionLights();
+    
     enableSceneShader();
     setSceneShaderEffect(kSceneShaderEffectDefault);
     
-    updateStageVideo();
+    setLightSpaceMatrix(gLightSpaceMatrix);
+    setInverseViewMatrix(gInverseViewMatrix);
+
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, gDepthMap);
+    setShadowMap(1);
+    glActiveTexture(GL_TEXTURE0);
+
+    renderScene();
     
-    drawRoom();
-    drawStageAndScreen();
-    drawSeats();
     disableSceneShader();
 
     glutSwapBuffers();
@@ -253,6 +325,21 @@ void init() {
     initLighting();
     setCeilingLightsEnabled(areCeilingLightsVisible());
     initSceneShader();
+
+    glGenFramebuffers(1, &gDepthMapFBO);
+    glGenTextures(1, &gDepthMap);
+    glBindTexture(GL_TEXTURE_2D, gDepthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, gDepthMapFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 }  // namespace

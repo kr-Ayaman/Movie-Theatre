@@ -10,6 +10,9 @@ namespace {
 
 GLuint gShaderProgram = 0;
 GLint gEffectModeLocation = -1;
+GLint gLightSpaceMatrixLoc = -1;
+GLint gShadowMapLoc = -1;
+GLint gInverseViewMatrixLoc = -1;
 
 const char* kVertexShaderSource = R"(
 #version 120
@@ -19,6 +22,13 @@ varying vec3 vEyePos;
 varying vec4 vColor;
 varying vec3 vObjectPos;
 varying vec3 vObjectNormal;
+varying vec4 vLightSpacePos;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+varying vec3 vWorldEyePos;
+
+uniform mat4 uLightSpaceMatrix;
+uniform mat4 uInverseViewMatrix;
 
 void main() {
     vec4 eyePos = gl_ModelViewMatrix * gl_Vertex;
@@ -27,6 +37,15 @@ void main() {
     vColor = gl_Color;
     vObjectPos = gl_Vertex.xyz;
     vObjectNormal = normalize(gl_Normal);
+    
+    // Calculate light space position using world position
+    vec4 worldPos = uInverseViewMatrix * eyePos;
+    vLightSpacePos = uLightSpaceMatrix * worldPos;
+    
+    vWorldPos = worldPos.xyz;
+    vWorldEyePos = (uInverseViewMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+    vWorldNormal = normalize(mat3(uInverseViewMatrix[0].xyz, uInverseViewMatrix[1].xyz, uInverseViewMatrix[2].xyz) * vNormal);
+    
     gl_Position = ftransform();
 }
 )";
@@ -39,8 +58,14 @@ varying vec3 vEyePos;
 varying vec4 vColor;
 varying vec3 vObjectPos;
 varying vec3 vObjectNormal;
+varying vec4 vLightSpacePos;
+varying vec3 vWorldPos;
+varying vec3 vWorldNormal;
+varying vec3 vWorldEyePos;
 
 uniform int uEffectMode;
+uniform sampler2D uShadowMap;
+uniform mat4 uInverseViewMatrix;
 
 float computeSpotFactor(int lightIndex, vec3 L) {
     vec3 spotDir = normalize(gl_LightSource[lightIndex].spotDirection);
@@ -51,42 +76,133 @@ float computeSpotFactor(int lightIndex, vec3 L) {
     return pow(max(spotCos, 0.0), gl_LightSource[lightIndex].spotExponent);
 }
 
+float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    
+    if (projCoords.z > 1.0) {
+        return 0.0;
+    }
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+    
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(2048.0, 2048.0);
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture2D(uShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+    
+    return shadow;
+}
+
 void accumulateLight(
     int lightIndex,
     vec3 N,
     vec3 V,
     inout vec4 ambientAcc,
     inout vec4 diffuseAcc,
-    inout vec4 specularAcc
+    inout vec4 specularAcc,
+    float shadowFactor
 ) {
-    vec4 lightPos = gl_LightSource[lightIndex].position;
-    vec3 L = normalize(lightPos.xyz - vEyePos * lightPos.w);
+    if (lightIndex != 0) {
+        vec4 lightPos = gl_LightSource[lightIndex].position;
+        vec3 L = normalize(lightPos.xyz - vEyePos * lightPos.w);
 
-    float attenuation = 1.0;
-    if (lightPos.w != 0.0) {
-        float distanceToLight = length(lightPos.xyz - vEyePos);
-        attenuation = 1.0 / (
-            gl_LightSource[lightIndex].constantAttenuation +
-            gl_LightSource[lightIndex].linearAttenuation * distanceToLight +
-            gl_LightSource[lightIndex].quadraticAttenuation * distanceToLight * distanceToLight
-        );
+        float attenuation = 1.0;
+        if (lightPos.w != 0.0) {
+            float distanceToLight = length(lightPos.xyz - vEyePos);
+            attenuation = 1.0 / (
+                gl_LightSource[lightIndex].constantAttenuation +
+                gl_LightSource[lightIndex].linearAttenuation * distanceToLight +
+                gl_LightSource[lightIndex].quadraticAttenuation * distanceToLight * distanceToLight
+            );
+        }
+
+        float spotFactor = 1.0;
+        if (gl_LightSource[lightIndex].spotCutoff <= 90.0) {
+            spotFactor = computeSpotFactor(lightIndex, L);
+        }
+
+        float ndotl = max(dot(N, L), 0.0);
+        ambientAcc += gl_LightSource[lightIndex].ambient * gl_FrontMaterial.ambient * attenuation * spotFactor;
+        diffuseAcc += gl_LightSource[lightIndex].diffuse * gl_FrontMaterial.diffuse * ndotl * attenuation * spotFactor;
+
+        if (ndotl > 0.0) {
+            vec3 R = reflect(-L, N);
+            float specPower = pow(max(dot(R, V), 0.0), gl_FrontMaterial.shininess);
+            specularAcc += gl_LightSource[lightIndex].specular * gl_FrontMaterial.specular * specPower * attenuation * spotFactor;
+        }
+        return;
     }
 
-    float spotFactor = 1.0;
-    if (gl_LightSource[lightIndex].spotCutoff <= 90.0) {
-        spotFactor = computeSpotFactor(lightIndex, L);
+    // --- 77 CEILING LIGHTS --- (Calculated for lightIndex 0 only)
+    if (length(gl_LightSource[0].diffuse.rgb) < 0.01) {
+        return; // Ceiling lights are off
     }
 
-    float ndotl = max(dot(N, L), 0.0);
-    ambientAcc += gl_LightSource[lightIndex].ambient * gl_FrontMaterial.ambient * attenuation * spotFactor;
-    diffuseAcc += gl_LightSource[lightIndex].diffuse * gl_FrontMaterial.diffuse * ndotl * attenuation * spotFactor;
+    vec3 worldN = normalize(mat3(uInverseViewMatrix[0].xyz, uInverseViewMatrix[1].xyz, uInverseViewMatrix[2].xyz) * N);
+    vec3 worldV = normalize(mat3(uInverseViewMatrix[0].xyz, uInverseViewMatrix[1].xyz, uInverseViewMatrix[2].xyz) * V);
+    
+    // Grid boundaries
+    float xMin = -15.2;
+    float xMax = 15.2;
+    float zMin = -20.6;
+    float zMax = 20.6;
+    float y = 20.72;
 
-    if (ndotl > 0.0) {
-        vec3 R = reflect(-L, N);
-        float specPower = pow(max(dot(R, V), 0.0), gl_FrontMaterial.shininess);
-        specularAcc += gl_LightSource[lightIndex].specular * gl_FrontMaterial.specular * specPower * attenuation * spotFactor;
+    vec3 gridDiffuse = vec3(0.0);
+    vec3 gridSpecular = vec3(0.0);
+
+    // Apply shadow map to dim the lights overall where blocked
+    float shadowMult = 1.0 - shadowFactor * 0.8;
+
+    for (int row = 0; row < 7; ++row) {
+        float lz = mix(zMin, zMax, float(row) / 6.0);
+        for (int col = 0; col < 11; ++col) {
+            float lx = mix(xMin, xMax, float(col) / 10.0);
+
+            vec3 lpWorld = vec3(lx, y, lz);
+            vec3 toLight = lpWorld - vWorldPos;
+            float dist2 = dot(toLight, toLight);
+            float dist = sqrt(dist2);
+            vec3 L_world = toLight / dist;
+
+            float ndotl = max(dot(worldN, L_world), 0.0);
+            if (ndotl > 0.0) {
+                // Make each ceiling light a wide downward spotlight to prevent harsh wall hotspots
+                float spotEffect = max(dot(-L_world, vec3(0.0, 1.0, 0.0)), 0.0); // 1.0 straight down, 0.0 sideways
+                
+                // Only allow light to spread downwards within a wide cone
+                spotEffect = smoothstep(0.4, 0.9, spotEffect); // softer edge
+                
+                // Gentler distance attenuation so the floor gets well lit and the walls are smooth
+                float atten = 1.0 / (1.0 + 0.015 * dist + 0.002 * dist2);
+                
+                float totalLight = ndotl * atten * spotEffect * shadowMult;
+                gridDiffuse += totalLight;
+
+                vec3 R_world = reflect(-L_world, worldN);
+                float spec = pow(max(dot(R_world, worldV), 0.0), gl_FrontMaterial.shininess);
+                gridSpecular += spec * atten * spotEffect * shadowMult;
+            }
+        }
     }
+
+    // Scale down the sum and multiply by material properties
+    float intensity = 20.0; // Global brightness scalar for the grid
+    vec4 baseDiffuse = gl_LightSource[0].diffuse * gl_FrontMaterial.diffuse;
+    vec4 baseSpecular = gl_LightSource[0].specular * gl_FrontMaterial.specular;
+
+    ambientAcc += gl_LightSource[0].ambient * gl_FrontMaterial.ambient * 1.5;
+    diffuseAcc += vec4(gridDiffuse * (intensity / 77.0), 0.0) * baseDiffuse;
+    specularAcc += vec4(gridSpecular * (intensity / 77.0), 0.0) * baseSpecular;
 }
+
 
 void main() {
     bool useVertexColor =
@@ -104,14 +220,18 @@ void main() {
     }
     vec3 V = normalize(-vEyePos);
 
+    // Calculate lightDir for shadow bias (approximating key light from view space)
+    vec3 L0 = normalize(gl_LightSource[0].position.xyz - vEyePos * gl_LightSource[0].position.w);
+    float shadow = calculateShadow(vLightSpacePos, N, L0);
+
     vec4 ambientAcc = gl_LightModel.ambient * gl_FrontMaterial.ambient;
     vec4 diffuseAcc = vec4(0.0);
     vec4 specularAcc = vec4(0.0);
 
-    accumulateLight(0, N, V, ambientAcc, diffuseAcc, specularAcc);
-    accumulateLight(1, N, V, ambientAcc, diffuseAcc, specularAcc);
-    accumulateLight(2, N, V, ambientAcc, diffuseAcc, specularAcc);
-    accumulateLight(3, N, V, ambientAcc, diffuseAcc, specularAcc);
+    accumulateLight(0, N, V, ambientAcc, diffuseAcc, specularAcc, shadow);
+    accumulateLight(1, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
+    accumulateLight(2, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
+    accumulateLight(3, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
 
     vec4 litColor = gl_FrontMaterial.emission + ambientAcc + diffuseAcc + specularAcc;
     litColor.a = gl_FrontMaterial.diffuse.a;
@@ -297,6 +417,9 @@ bool initSceneShader() {
 
     gShaderProgram = program;
     gEffectModeLocation = glGetUniformLocation(gShaderProgram, "uEffectMode");
+    gLightSpaceMatrixLoc = glGetUniformLocation(gShaderProgram, "uLightSpaceMatrix");
+    gInverseViewMatrixLoc = glGetUniformLocation(gShaderProgram, "uInverseViewMatrix");
+    gShadowMapLoc = glGetUniformLocation(gShaderProgram, "uShadowMap");
 
     if (gEffectModeLocation >= 0) {
         glUseProgram(gShaderProgram);
@@ -317,6 +440,24 @@ void disableSceneShader() {
     glUseProgram(0);
 }
 
+
+void setLightSpaceMatrix(float* matrix) {
+    if (gLightSpaceMatrixLoc != -1) {
+        glUniformMatrix4fv(gLightSpaceMatrixLoc, 1, GL_FALSE, matrix);
+    }
+}
+
+void setInverseViewMatrix(float* matrix) {
+    if (gInverseViewMatrixLoc != -1) {
+        glUniformMatrix4fv(gInverseViewMatrixLoc, 1, GL_FALSE, matrix);
+    }
+}
+
+void setShadowMap(int texUnit) {
+    if (gShadowMapLoc != -1) {
+        glUniform1i(gShadowMapLoc, texUnit);
+    }
+}
 void setSceneShaderEffect(int effectMode) {
     if (gShaderProgram == 0 || gEffectModeLocation < 0) {
         return;

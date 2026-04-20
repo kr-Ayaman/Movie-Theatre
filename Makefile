@@ -1,29 +1,17 @@
-CXX := g++
-CXXFLAGS := -std=c++17 -Wall -Wextra -Iinclude `pkg-config --cflags opencv4`
-LDFLAGS := -lGL -lGLU -lglut `pkg-config --libs opencv4`
+CXX = g++
+CXXFLAGS = -std=c++17 -Wall -Wextra -O3 -Iinclude $(shell pkg-config --cflags opencv4)
+LDFLAGS = -lGL -lGLU -lglut $(shell pkg-config --libs opencv4)
 
-SRC := \
-	src/main.cpp \
-	src/core/camera.cpp \
-	src/render/lighting.cpp \
-	src/render/shader.cpp \
-	src/render/primitives.cpp \
-	src/render/video.cpp \
-	src/scene/room.cpp \
-	src/scene/stage.cpp \
-	src/scene/seats.cpp
+SRCS = src/main.cpp src/core/camera.cpp src/render/lighting.cpp src/render/shader.cpp src/render/primitives.cpp src/render/video.cpp src/scene/room.cpp src/scene/stage.cpp src/scene/seats.cpp
 
-OUT := th
+TARGET = th
 
-.PHONY: all clean run
+all: $(TARGET)
 
-all: $(OUT)
-
-$(OUT): $(SRC)
-	$(CXX) $(CXXFLAGS) $(SRC) -o $(OUT) $(LDFLAGS)
-
-run: $(OUT)
-	./$(OUT)
+$(TARGET): $(SRCS)
+	$(CXX) $(CXXFLAGS) $(SRCS) -o $(TARGET) $(LDFLAGS)
 
 clean:
-	rm -f $(OUT)
+	rm -f $(TARGET)
+
+.PHONY: all clean

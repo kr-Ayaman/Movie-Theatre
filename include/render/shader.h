@@ -13,5 +13,8 @@ void disableSceneShader();
 void setSceneShaderEffect(int effectMode);
 bool isSceneShaderActive();
 void shutdownSceneShader();
+void setLightSpaceMatrix(float* matrix);
+void setInverseViewMatrix(float* matrix);
+void setShadowMap(int texUnit);
 
 #endif
