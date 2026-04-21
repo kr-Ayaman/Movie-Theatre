@@ -39,6 +39,60 @@ const unsigned int SHADOW_WIDTH = 2048, SHADOW_HEIGHT = 2048;
 float gLightSpaceMatrix[16];
 float gInverseViewMatrix[16];
 
+void loadLightViewMatrix(const float eye[3], const float dir[3]) {
+    glLoadIdentity();
+    float target[3] = {eye[0] + dir[0], eye[1] + dir[1], eye[2] + dir[2]};
+    float up[3] = {0.0f, 1.0f, 0.0f};
+    if (std::abs(dir[1]) > 0.99f) {
+        up[0] = 0.0f; up[1] = 0.0f; up[2] = -1.0f;
+    }
+    gluLookAt(eye[0], eye[1], eye[2], target[0], target[1], target[2], up[0], up[1], up[2]);
+}
+
+void multiplyProjectionAndView(float proj[16], float view[16]) {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadMatrixf(proj);
+    glMultMatrixf(view);
+    glGetFloatv(GL_PROJECTION_MATRIX, gLightSpaceMatrix);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void updateDirectionalLightSpaceMatrix(const float shadowLightDir[3]) {
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(-34.0f, 34.0f, -48.0f, 48.0f, 1.0f, 120.0f);
+    float lightProjMat[16];
+    glGetFloatv(GL_PROJECTION_MATRIX, lightProjMat);
+
+    glMatrixMode(GL_MODELVIEW);
+    float lightEye[3] = {shadowLightDir[0] * 68.0f, shadowLightDir[1] * 68.0f, shadowLightDir[2] * 68.0f};
+    float viewDir[3] = {-shadowLightDir[0], -shadowLightDir[1], -shadowLightDir[2]};
+    loadLightViewMatrix(lightEye, viewDir);
+    float lightViewMat[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, lightViewMat);
+
+    multiplyProjectionAndView(lightProjMat, lightViewMat);
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void updateSpotLightSpaceMatrix(const float shadowLightPos[3], const float shadowLightDir[3]) {
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(100.0f, 1.0f, 0.5f, 100.0f);
+    float lightProjMat[16];
+    glGetFloatv(GL_PROJECTION_MATRIX, lightProjMat);
+
+    glMatrixMode(GL_MODELVIEW);
+    loadLightViewMatrix(shadowLightPos, shadowLightDir);
+    float lightViewMat[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, lightViewMat);
+
+    multiplyProjectionAndView(lightProjMat, lightViewMat);
+    glMatrixMode(GL_MODELVIEW);
+}
+
 float smoothApproach(float current, float target, float response, float dt) {
     float t = 1.0f - std::exp(-response * dt);
     return current + (target - current) * t;
@@ -136,42 +190,38 @@ void display() {
 
     computeInverseViewMatrix(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ, gInverseViewMatrix);
 
-    float lightPos[3] = {0.0f, 30.0f, 0.0f}; // Moved high up center for orthogonal shadows
+    float shadowLightDir[3];
+    getShadowLightDirection(shadowLightDir);
+    float shadowLightPos[3];
+    getScreenLightPosition(shadowLightPos);
+    int shadowLightMode = areCeilingLightsEnabled() ? kShadowLightModeCeiling : kShadowLightModeScreen;
 
     // 1. Render depth of scene to texture (from light's perspective)
     glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
     glBindFramebuffer(GL_FRAMEBUFFER, gDepthMapFBO);
     glClear(GL_DEPTH_BUFFER_BIT);
-
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
-    glLoadIdentity();
-    glOrtho(-30.0f, 30.0f, -40.0f, 40.0f, 1.0f, 60.0f);
-    
-    float lightProjMat[16];
-    glGetFloatv(GL_PROJECTION_MATRIX, lightProjMat);
-
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
-    glLoadIdentity();
-    gluLookAt(0.0f, 25.0f, 0.0f, // high above center
-              0.0f, 0.0f, 0.0f,
-              0.0f, 0.0f, -1.0f); // Up vector points -z since we look -y
-              
-    float lightViewMat[16];
-    glGetFloatv(GL_MODELVIEW_MATRIX, lightViewMat);
-
-    // Compute LightSpaceMatrix = Proj * View
-    for (int i=0; i<4; ++i) {
-        for (int j=0; j<4; ++j) {
-            gLightSpaceMatrix[i*4 + j] = 0;
-            for (int k=0; k<4; ++k) {
-                gLightSpaceMatrix[i*4 + j] += lightProjMat[k*4 + j] * lightViewMat[i*4 + k];
-            }
-        }
+    if (shadowLightMode == kShadowLightModeCeiling) {
+        updateDirectionalLightSpaceMatrix(shadowLightDir);
+    } else {
+        updateSpotLightSpaceMatrix(shadowLightPos, shadowLightDir);
     }
 
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(2.0f, 4.0f);
+
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+
+    setShadowPassMode(true);
     renderScene();
+    setShadowPassMode(false);
+
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_POLYGON_OFFSET_FILL);
 
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
@@ -198,6 +248,11 @@ void display() {
     enableSceneShader();
     setSceneShaderEffect(kSceneShaderEffectDefault);
     
+    setShadowLightDirection(shadowLightDir);
+    setShadowLightPosition(shadowLightPos);
+    setShadowLightMode(shadowLightMode);
+    setShadowLightEnabled(true);
+
     setLightSpaceMatrix(gLightSpaceMatrix);
     setInverseViewMatrix(gInverseViewMatrix);
 
@@ -339,6 +394,11 @@ void init() {
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, gDepthMap, 0);
     glDrawBuffer(GL_NONE);
     glReadBuffer(GL_NONE);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE) {
+        std::printf("Shadow FBO OK\n");
+    }
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 

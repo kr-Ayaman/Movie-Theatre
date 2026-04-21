@@ -9,8 +9,13 @@
 namespace {
 
 bool gCeilingLightsVisible = true;
+bool gInShadowPass = false;
 
 void drawSimpleWalls() {
+    // Skip walls in shadow pass: wall blocks self-shadow (wall top occludes
+    // the wall body from above), causing incorrect shadow on wall surfaces.
+    // Speakers (drawn separately) still cast shadows on both walls.
+    if (gInShadowPass) return;
     setSceneShaderEffect(kSceneShaderEffectBrick);
     setMaterial(0.73f, 0.74f, 0.76f, 9.0f, 0.04f);
 
@@ -24,6 +29,9 @@ void drawSimpleWalls() {
 }
 
 void drawCeilingSurface() {
+    // Skip ceiling in shadow depth pass — it covers the whole scene from above
+    // and would make everything uniformly shadowed with no visible contrast.
+    if (gInShadowPass) return;
     setSceneShaderEffect(kSceneShaderEffectCeiling);
     setMaterial(0.58f, 0.60f, 0.64f, 7.0f, 0.04f);
     drawBlock(0.0f, 21.5f, 0.0f, 34.0f, 0.5f, 48.0f);
@@ -31,6 +39,8 @@ void drawCeilingSurface() {
 }
 
 void drawCeilingLights() {
+    // Light bulbs themselves need not cast shadows.
+    if (gInShadowPass) return;
     const int cols = 11;
     const int rows = 7;
     const float xMin = -15.2f;
@@ -71,74 +81,112 @@ void drawSpeakerDetailed(float width, float height, float depth, bool faceX) {
     }
 }
 
-void drawSignLetterE(float x, float y, float z, bool lit) {
-    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
-    drawBlock(x, y, z, 0.08f, 0.60f, 0.10f);
-    drawBlock(x, y + 0.22f, z + 0.15f, 0.08f, 0.10f, 0.60f);
-    drawBlock(x, y, z + 0.15f, 0.08f, 0.10f, 0.60f);
-    drawBlock(x, y - 0.22f, z + 0.15f, 0.08f, 0.10f, 0.60f);
+
+void setNeonMaterial(bool lit, float r, float g, float b) {
+    if (lit) {
+        setMaterial(r, g, b, 10.0f, 0.25f, 1.0f);
+    } else {
+        setMaterial(r * 0.25f, g * 0.25f, b * 0.25f, 10.0f, 0.25f, 0.12f);
+    }
 }
 
-void drawSignLetterI(float x, float y, float z, bool lit) {
-    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+void drawSignLetterE(float x, float y, float z, bool lit, float r, float g, float b) {
+    setNeonMaterial(lit, r, g, b);
+    drawBlock(x, y, z, 0.08f, 0.60f, 0.10f);
+    drawBlock(x, y + 0.22f, z + 0.15f, 0.08f, 0.10f, 0.30f);
+    drawBlock(x, y, z + 0.15f, 0.08f, 0.10f, 0.30f);
+    drawBlock(x, y - 0.22f, z + 0.15f, 0.08f, 0.10f, 0.30f);
+}
+
+void drawSignLetterI(float x, float y, float z, bool lit, float r, float g, float b) {
+    setNeonMaterial(lit, r, g, b);
     drawBlock(x, y, z, 0.08f, 0.60f, 0.10f);
 }
 
-void drawSignLetterT(float x, float y, float z, bool lit) {
-    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
-    drawBlock(x, y + 0.25f, z, 0.10f, 0.10f, 0.60f);
+void drawSignLetterT(float x, float y, float z, bool lit, float r, float g, float b) {
+    setNeonMaterial(lit, r, g, b);
+    drawBlock(x, y + 0.25f, z, 0.08f, 0.10f, 0.40f);
     drawBlock(x, y - 0.05f, z, 0.08f, 0.50f, 0.10f);
 }
 
-void drawSignLetterX(float x, float y, float z, bool lit) {
-    setMaterial(0.0f, lit ? 0.98f : 0.25f, 0.0f, 10.0f, 0.25f, lit ? 1.0f : 0.12f);
+void drawSignLetterX(float x, float y, float z, bool lit, float r, float g, float b) {
+    setNeonMaterial(lit, r, g, b);
     glPushMatrix();
     glTranslatef(x, y, z);
-    glRotatef(45.0f, 1.0f, 0.0f, 0.0f);
-    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.38f, 0.10f);
+    glRotatef(35.0f, 1.0f, 0.0f, 0.0f);
+    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.58f, 0.10f);
     glPopMatrix();
 
     glPushMatrix();
     glTranslatef(x, y, z);
-    glRotatef(-45.0f, 1.0f, 0.0f, 0.0f);
-    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.38f, 0.10f);
+    glRotatef(-35.0f, 1.0f, 0.0f, 0.0f);
+    drawBlock(0.0f, 0.0f, 0.0f, 0.06f, 0.58f, 0.10f);
     glPopMatrix();
 }
 
-void drawExitDoor(bool lit) {
-    float doorX = 16.45f;
-    float doorY = 2.60f; // bottom sits on the ground
-    float doorZ = -4.20f; // move the door further forward ahead of the front row
+void drawGate(bool lit, bool isLeftWall) {
+    float wallX = isLeftWall ? -16.6f : 16.6f; 
+    float doorZ = -5.0f; // Moved near the front stage
+
+    setSceneShaderEffect(kSceneShaderEffectGate);
+
+    // Frame (Pillars and Lintel)
+    setMaterial(0.06f, 0.06f, 0.08f, 15.0f, 0.08f, 0.05f);
+    // Left Pillar 
+    drawBlock(wallX, 3.0f, doorZ - 1.8f, 0.6f, 6.0f, 0.4f);
+    // Right Pillar 
+    drawBlock(wallX, 3.0f, doorZ + 1.8f, 0.6f, 6.0f, 0.4f);
+    // Top Lintel (Skip in shadow pass to avoid large inaccurate shadow on door)
+    if (!gInShadowPass) {
+        drawBlock(wallX, 5.7f, doorZ, 0.6f, 0.6f, 4.0f);
+    }
+
+    // The double doors (recessed slightly into the wall)
+    float doorX = isLeftWall ? -16.65f : 16.65f;
+    setMaterial(0.03f, 0.03f, 0.04f, 10.0f, 0.03f, 0.02f); // very dark door surface
+    drawBlock(doorX, 2.7f, doorZ, 0.2f, 5.4f, 3.2f);
+    
+    // Door pushbars (shiny metal handles)
+    setSceneShaderEffect(kSceneShaderEffectMetal);
+    setMaterial(0.4f, 0.4f, 0.45f, 50.0f, 0.6f, 0.1f);
+    float barX = isLeftWall ? -16.4f : 16.4f;
+    drawBlock(barX, 2.7f, doorZ - 0.8f, 0.1f, 0.08f, 1.2f);
+    drawBlock(barX, 2.7f, doorZ + 0.8f, 0.1f, 0.08f, 1.2f);
+    setSceneShaderEffect(kSceneShaderEffectGate);
+
+    // Center vertical divider for the double doors
+    setMaterial(0.01f, 0.01f, 0.01f, 5.0f, 0.0f, 0.0f);
+    drawBlock(doorX + (isLeftWall ? 0.05f : -0.05f), 2.7f, doorZ, 0.25f, 5.4f, 0.05f);
+
+    if (!isLeftWall) {
+        // Keep the EXIT sign above the right-hand gate only.
+        float signX = 16.65f;
+        float signY = 6.3f; // mounted above the doorway
+        float signZ = doorZ;
+        setMaterial(0.01f, 0.01f, 0.01f, 4.0f, 0.02f, 0.0f);
+        drawBlock(signX, signY, signZ, 0.1f, 0.5f, 1.8f);
+
+        // Translate and properly scale down the neon text structure
+        setSceneShaderEffect(kSceneShaderEffectDefault);
+        glPushMatrix();
+        glTranslatef(signX - 0.08f, signY, signZ);
+        glScalef(0.30f, 0.30f, 0.30f); // Make the letters much smaller!
+
+        float gap = 0.8f;
+        float r = 0.98f;
+        float g = 0.1f;
+        float b = 0.1f;
+        float startZ = -1.2f;
+        drawSignLetterE(0, 0, startZ, lit, r, g, b);
+        drawSignLetterX(0, 0, startZ + gap, lit, r, g, b);
+        drawSignLetterI(0, 0, startZ + gap * 2, lit, r, g, b);
+        drawSignLetterT(0, 0, startZ + gap * 3, lit, r, g, b);
+        glPopMatrix();
+
+        setSceneShaderEffect(kSceneShaderEffectGate);
+    }
 
     setSceneShaderEffect(kSceneShaderEffectDefault);
-    setMaterial(0.08f, 0.08f, 0.10f, 12.0f, 0.06f, 0.05f);
-    drawBlock(doorX, doorY, doorZ, 0.14f, 5.20f, 3.40f);
-
-    setMaterial(0.04f, 0.05f, 0.06f, 8.0f, 0.04f, lit ? 0.40f : 0.08f);
-    drawBlock(doorX - 0.03f, doorY, doorZ, 0.06f, 4.80f, 2.80f);
-
-    if (lit) {
-        setMaterial(0.0f, 0.80f, 0.0f, 10.0f, 0.30f, 1.0f);
-    } else {
-        setMaterial(0.0f, 0.25f, 0.0f, 10.0f, 0.10f, 0.15f);
-    }
-    drawBlock(doorX + 0.08f, doorY, doorZ, 0.03f, 5.20f, 3.20f);
-
-    float signX = doorX + 0.14f;
-    float signY = doorY + 3.70f;
-    float signZ = doorZ;
-    setMaterial(0.02f, 0.02f, 0.02f, 4.0f, 0.03f, 0.0f);
-    drawBlock(signX - 0.02f, signY, signZ, 0.18f, 0.80f, 4.20f);
-
-    float letterX = signX + 0.06f;
-    float letterTopY = signY;
-    float letterZ0 = signZ - 1.70f;
-    float letterGap = 1.05f;
-
-    drawSignLetterE(letterX, letterTopY, letterZ0, lit);
-    drawSignLetterX(letterX, letterTopY, letterZ0 + letterGap, lit);
-    drawSignLetterI(letterX, letterTopY, letterZ0 + 2.05f, lit);
-    drawSignLetterT(letterX, letterTopY, letterZ0 + 3.05f, lit);
 }
 
 void drawWallSpeakers() {
@@ -192,7 +240,8 @@ void drawRoom() {
     drawBlock(0.0f, -0.2f, 0.0f, 34.0f, 0.6f, 48.0f);
 
     drawSimpleWalls();
-    drawExitDoor(gCeilingLightsVisible);
+    drawGate(gCeilingLightsVisible, false); // Right wall EXIT
+    drawGate(gCeilingLightsVisible, true);  // Left wall gate
     drawCeilingSurface();
     drawWallSpeakers();
 
@@ -204,6 +253,14 @@ void drawRoom() {
     }
 
     drawCeilingLights();
+}
+
+void setShadowPassMode(bool inPass) {
+    gInShadowPass = inPass;
+}
+
+bool isInShadowPass() {
+    return gInShadowPass;
 }
 
 void toggleCeilingLights() {

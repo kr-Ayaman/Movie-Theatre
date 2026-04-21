@@ -13,6 +13,14 @@ GLint gEffectModeLocation = -1;
 GLint gLightSpaceMatrixLoc = -1;
 GLint gShadowMapLoc = -1;
 GLint gInverseViewMatrixLoc = -1;
+GLint gShadowLightDirLoc = -1;
+GLint gShadowLightPosLoc = -1;
+GLint gShadowLightAmbientLoc = -1;
+GLint gShadowLightDiffuseLoc = -1;
+GLint gShadowLightSpecularLoc = -1;
+GLint gShadowLightEnabledLoc = -1;
+GLint gShadowLightModeLoc = -1;
+GLint gShadowLightSpotCutoffLoc = -1;
 
 const char* kVertexShaderSource = R"(
 #version 120
@@ -66,6 +74,14 @@ varying vec3 vWorldEyePos;
 uniform int uEffectMode;
 uniform sampler2D uShadowMap;
 uniform mat4 uInverseViewMatrix;
+uniform vec3 uShadowLightDirWorld;
+uniform vec3 uShadowLightPosWorld;
+uniform vec4 uShadowLightAmbient;
+uniform vec4 uShadowLightDiffuse;
+uniform vec4 uShadowLightSpecular;
+uniform int uShadowLightEnabled;
+uniform int uShadowLightMode;
+uniform float uShadowLightCosCutoff;
 
 float computeSpotFactor(int lightIndex, vec3 L) {
     vec3 spotDir = normalize(gl_LightSource[lightIndex].spotDirection);
@@ -76,16 +92,38 @@ float computeSpotFactor(int lightIndex, vec3 L) {
     return pow(max(spotCos, 0.0), gl_LightSource[lightIndex].spotExponent);
 }
 
-float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
+vec3 getShadowLightVectorWorld(vec3 worldPos) {
+    if (uShadowLightMode == 2) {
+        return normalize(uShadowLightPosWorld - worldPos);
+    }
+    return normalize(uShadowLightDirWorld);
+}
+
+float getShadowLightSpotMask(vec3 lightVectorWorld) {
+    if (uShadowLightMode != 2) {
+        return 1.0;
+    }
+
+    float spotCos = dot(-normalize(lightVectorWorld), normalize(uShadowLightDirWorld));
+    return smoothstep(uShadowLightCosCutoff - 0.05, min(1.0, uShadowLightCosCutoff + 0.01), spotCos);
+}
+
+float calculateShadow(vec4 fragPosLightSpace, vec3 worldNormal, vec3 lightDirWorld) {
     vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
     projCoords = projCoords * 0.5 + 0.5;
     
-    if (projCoords.z > 1.0) {
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z < 0.0 || projCoords.z > 1.0) {
         return 0.0;
     }
 
     float currentDepth = projCoords.z;
-    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+    float ndotl = max(dot(normalize(worldNormal), normalize(lightDirWorld)), 0.0);
+    // Use higher bias for seats (3) to prevent acne, and tighter bias for walls/speakers to avoid "Peter Panning"
+    float biasMax = (uEffectMode == 3) ? 0.022 : 0.005;
+    float biasMin = (uEffectMode == 3) ? 0.008 : 0.002;
+    float bias = max(biasMax * (1.0 - ndotl), biasMin);
     
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(2048.0, 2048.0);
@@ -100,10 +138,43 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 normal, vec3 lightDir) {
     return shadow;
 }
 
+void accumulateShadowLight(
+    vec3 worldN,
+    vec3 worldV,
+    inout vec4 ambientAcc,
+    inout vec4 diffuseAcc,
+    inout vec4 specularAcc,
+    float shadowFactor
+) {
+    if (uShadowLightEnabled == 0 || uShadowLightMode != 1) {
+        return;
+    }
+
+    vec3 L = normalize(uShadowLightDirWorld);
+    // Strong shadow: full visibility reduction for the key directional light
+    float visibility = 1.0 - shadowFactor;
+    // Ambient is dimmed but never goes fully black — keep some fill in shadows
+    float ambientVisibility = 1.0 - shadowFactor * 0.20;
+    float ndotl = max(dot(worldN, L), 0.0);
+
+    ambientAcc += uShadowLightAmbient * gl_FrontMaterial.ambient * ambientVisibility;
+    if (ndotl <= 0.0) {
+        return;
+    }
+
+    diffuseAcc += uShadowLightDiffuse * gl_FrontMaterial.diffuse * ndotl * visibility;
+
+    vec3 R = reflect(-L, worldN);
+    float specPower = pow(max(dot(R, worldV), 0.0), gl_FrontMaterial.shininess);
+    specularAcc += uShadowLightSpecular * gl_FrontMaterial.specular * specPower * visibility;
+}
+
 void accumulateLight(
     int lightIndex,
     vec3 N,
     vec3 V,
+    vec3 worldN,
+    vec3 worldV,
     inout vec4 ambientAcc,
     inout vec4 diffuseAcc,
     inout vec4 specularAcc,
@@ -129,13 +200,22 @@ void accumulateLight(
         }
 
         float ndotl = max(dot(N, L), 0.0);
-        ambientAcc += gl_LightSource[lightIndex].ambient * gl_FrontMaterial.ambient * attenuation * spotFactor;
-        diffuseAcc += gl_LightSource[lightIndex].diffuse * gl_FrontMaterial.diffuse * ndotl * attenuation * spotFactor;
+        
+        // Weaken screen and key lights for seats to maintain top-down lighting balance
+        if (uEffectMode == 3 && (lightIndex == 0 || lightIndex == 1)) {
+            ndotl *= 0.40;
+        }
+        // Use the per-call shadowFactor; caller passes 0.0 for unshadowed lights
+        float visibility = 1.0 - shadowFactor;
+        float ambientVisibility = 1.0 - shadowFactor * 0.20;
+
+        ambientAcc += gl_LightSource[lightIndex].ambient * gl_FrontMaterial.ambient * attenuation * spotFactor * ambientVisibility;
+        diffuseAcc += gl_LightSource[lightIndex].diffuse * gl_FrontMaterial.diffuse * ndotl * attenuation * spotFactor * visibility;
 
         if (ndotl > 0.0) {
             vec3 R = reflect(-L, N);
             float specPower = pow(max(dot(R, V), 0.0), gl_FrontMaterial.shininess);
-            specularAcc += gl_LightSource[lightIndex].specular * gl_FrontMaterial.specular * specPower * attenuation * spotFactor;
+            specularAcc += gl_LightSource[lightIndex].specular * gl_FrontMaterial.specular * specPower * attenuation * spotFactor * visibility;
         }
         return;
     }
@@ -145,9 +225,6 @@ void accumulateLight(
         return; // Ceiling lights are off
     }
 
-    vec3 worldN = normalize(mat3(uInverseViewMatrix[0].xyz, uInverseViewMatrix[1].xyz, uInverseViewMatrix[2].xyz) * N);
-    vec3 worldV = normalize(mat3(uInverseViewMatrix[0].xyz, uInverseViewMatrix[1].xyz, uInverseViewMatrix[2].xyz) * V);
-    
     // Grid boundaries
     float xMin = -15.2;
     float xMax = 15.2;
@@ -158,8 +235,9 @@ void accumulateLight(
     vec3 gridDiffuse = vec3(0.0);
     vec3 gridSpecular = vec3(0.0);
 
-    // Apply shadow map to dim the lights overall where blocked
-    float shadowMult = 1.0 - shadowFactor * 0.8;
+    // Apply shadow map — moderate strength for room, but weak for seats (3) and gate (5) to avoid harsh self-shadowing
+    // Apply shadow map — moderate strength for room, but very weak for seats (3) to avoid self-shadowing
+    float shadowMult = 1.0 - shadowFactor * (uEffectMode == 3 ? 0.05 : (uEffectMode == 5 ? 0.45 : 0.45));
 
     for (int row = 0; row < 7; ++row) {
         float lz = mix(zMin, zMax, float(row) / 6.0);
@@ -194,7 +272,7 @@ void accumulateLight(
     }
 
     // Scale down the sum and multiply by material properties
-    float intensity = 20.0; // Global brightness scalar for the grid
+    float intensity = 18.0; // Leave room for the shadow-casting key light
     vec4 baseDiffuse = gl_LightSource[0].diffuse * gl_FrontMaterial.diffuse;
     vec4 baseSpecular = gl_LightSource[0].specular * gl_FrontMaterial.specular;
 
@@ -215,23 +293,42 @@ void main() {
     }
 
     vec3 N = normalize(vNormal);
+    vec3 worldN = normalize(vWorldNormal);
     if (!gl_FrontFacing) {
         N = -N;
+        worldN = -worldN;
     }
     vec3 V = normalize(-vEyePos);
+    vec3 worldV = normalize(vWorldEyePos - vWorldPos);
 
-    // Calculate lightDir for shadow bias (approximating key light from view space)
-    vec3 L0 = normalize(gl_LightSource[0].position.xyz - vEyePos * gl_LightSource[0].position.w);
-    float shadow = calculateShadow(vLightSpacePos, N, L0);
+    float shadow = 0.0;
+    if (uShadowLightEnabled != 0 && uShadowLightMode != 0) {
+        vec3 shadowLightVectorWorld = getShadowLightVectorWorld(vWorldPos);
+        float spotMask = getShadowLightSpotMask(shadowLightVectorWorld);
+        if (spotMask > 0.001) {
+            shadow = calculateShadow(vLightSpacePos, worldN, shadowLightVectorWorld) * spotMask;
+        }
+    }
 
-    vec4 ambientAcc = gl_LightModel.ambient * gl_FrontMaterial.ambient;
+    // In screen-light mode (lights off), apply shadow as a global darkness multiplier.
+    // This makes seat/curtain silhouettes visible on back wall and side walls even
+    // though GL_LIGHT1 (screen) barely illuminates those surfaces.
+    float screenShadowGlobalMult = 1.0;
+    if (uShadowLightEnabled != 0 && uShadowLightMode == 2) {
+        screenShadowGlobalMult = 1.0 - shadow * 0.65;
+    }
+
+    vec4 ambientAcc = gl_LightModel.ambient * gl_FrontMaterial.ambient * screenShadowGlobalMult;
     vec4 diffuseAcc = vec4(0.0);
     vec4 specularAcc = vec4(0.0);
 
-    accumulateLight(0, N, V, ambientAcc, diffuseAcc, specularAcc, shadow);
-    accumulateLight(1, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
-    accumulateLight(2, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
-    accumulateLight(3, N, V, ambientAcc, diffuseAcc, specularAcc, 0.0);
+    accumulateShadowLight(worldN, worldV, ambientAcc, diffuseAcc, specularAcc, shadow);
+    accumulateLight(0, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, shadow);
+    // GL_LIGHT1 = screen spotlight, fully shadowed in screen mode
+    accumulateLight(1, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, shadow);
+    // Fill lights also dimmed by screen shadow to deepen the effect
+    accumulateLight(2, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow * 0.6 : 0.0));
+    accumulateLight(3, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow * 0.5 : 0.0));
 
     vec4 litColor = gl_FrontMaterial.emission + ambientAcc + diffuseAcc + specularAcc;
     litColor.a = gl_FrontMaterial.diffuse.a;
@@ -307,6 +404,60 @@ void main() {
 
         vec3 gridColor = vec3(0.24, 0.25, 0.27);
         shadedRgb = mix(panelColor, gridColor, gridMask * 0.92);
+    } else if (uEffectMode == 5) {
+        vec3 absObjN = abs(normalize(vObjectNormal));
+        vec2 uv;
+        if (absObjN.x > absObjN.z && absObjN.x > absObjN.y) {
+            uv = vObjectPos.zy;
+        } else if (absObjN.z > absObjN.y) {
+            uv = vObjectPos.xy;
+        } else {
+            uv = vObjectPos.xz;
+        }
+
+        vec2 panelUv = uv * vec2(1.15, 1.75);
+        vec2 panelCell = fract(panelUv + 0.5);
+        vec2 panelId = floor(panelUv + 0.5);
+        float edgeDistance = min(min(panelCell.x, 1.0 - panelCell.x), min(panelCell.y, 1.0 - panelCell.y));
+        float seamMask = 1.0 - smoothstep(0.035, 0.085, edgeDistance);
+
+        float panelNoise = fract(sin(dot(panelId, vec2(31.173, 47.551))) * 17853.127);
+        float verticalBrush = 0.5 + 0.5 * sin(uv.y * 120.0 + sin(uv.x * 7.0) * 2.2);
+        float crossBrush = 0.5 + 0.5 * sin(uv.x * 52.0 - uv.y * 17.0);
+        float grain = mix(verticalBrush, crossBrush, absObjN.y * 0.35);
+
+        float bottomWear = clamp(0.55 - vObjectPos.y * 0.12, 0.0, 1.0);
+        float rim = pow(clamp(1.0 - max(dot(N, V), 0.0), 0.0, 1.0), 2.4);
+
+        shadedRgb *= 0.90 + (grain - 0.5) * 0.18;
+        shadedRgb *= 0.94 + panelNoise * 0.10;
+        shadedRgb *= vec3(0.95, 0.97, 1.02);
+        shadedRgb *= 1.0 - bottomWear * 0.08;
+
+        vec3 seamColor = shadedRgb * vec3(0.42, 0.44, 0.50);
+        shadedRgb = mix(shadedRgb, seamColor, seamMask * 0.55);
+        shadedRgb += vec3(0.15, 0.17, 0.20) * rim * 0.16;
+    } else if (uEffectMode == 6) {
+        vec3 absObjN = abs(normalize(vObjectNormal));
+        vec2 uv;
+        if (absObjN.x > absObjN.z && absObjN.x > absObjN.y) {
+            uv = vObjectPos.zy;
+        } else if (absObjN.z > absObjN.y) {
+            uv = vObjectPos.xy;
+        } else {
+            uv = vObjectPos.xz;
+        }
+
+        float brushA = 0.5 + 0.5 * sin(uv.x * 190.0 + sin(uv.y * 9.0) * 1.8);
+        float brushB = 0.5 + 0.5 * sin(uv.x * 330.0 + uv.y * 11.0);
+        float brushed = mix(brushA, brushB, 0.45);
+        float softBand = 0.5 + 0.5 * cos(uv.y * 18.0);
+        float rim = pow(clamp(1.0 - max(dot(N, V), 0.0), 0.0, 1.0), 2.0);
+
+        shadedRgb *= vec3(0.94, 0.97, 1.05);
+        shadedRgb *= 0.97 + (brushed - 0.5) * 0.10;
+        shadedRgb += vec3(0.10, 0.12, 0.16) * softBand * 0.10;
+        shadedRgb += vec3(0.20, 0.22, 0.28) * rim * 0.12;
     }
 
     gl_FragColor = vec4(clamp(shadedRgb, 0.0, 1.0), litColor.a);
@@ -420,10 +571,24 @@ bool initSceneShader() {
     gLightSpaceMatrixLoc = glGetUniformLocation(gShaderProgram, "uLightSpaceMatrix");
     gInverseViewMatrixLoc = glGetUniformLocation(gShaderProgram, "uInverseViewMatrix");
     gShadowMapLoc = glGetUniformLocation(gShaderProgram, "uShadowMap");
+    gShadowLightDirLoc = glGetUniformLocation(gShaderProgram, "uShadowLightDirWorld");
+    gShadowLightPosLoc = glGetUniformLocation(gShaderProgram, "uShadowLightPosWorld");
+    gShadowLightAmbientLoc = glGetUniformLocation(gShaderProgram, "uShadowLightAmbient");
+    gShadowLightDiffuseLoc = glGetUniformLocation(gShaderProgram, "uShadowLightDiffuse");
+    gShadowLightSpecularLoc = glGetUniformLocation(gShaderProgram, "uShadowLightSpecular");
+    gShadowLightEnabledLoc = glGetUniformLocation(gShaderProgram, "uShadowLightEnabled");
+    gShadowLightModeLoc = glGetUniformLocation(gShaderProgram, "uShadowLightMode");
+    gShadowLightSpotCutoffLoc = glGetUniformLocation(gShaderProgram, "uShadowLightCosCutoff");
 
     if (gEffectModeLocation >= 0) {
         glUseProgram(gShaderProgram);
         glUniform1i(gEffectModeLocation, kSceneShaderEffectDefault);
+        if (gShadowLightEnabledLoc >= 0) {
+            glUniform1i(gShadowLightEnabledLoc, 0);
+        }
+        if (gShadowLightModeLoc >= 0) {
+            glUniform1i(gShadowLightModeLoc, kShadowLightModeNone);
+        }
         glUseProgram(0);
     }
 
@@ -458,6 +623,55 @@ void setShadowMap(int texUnit) {
         glUniform1i(gShadowMapLoc, texUnit);
     }
 }
+
+void setShadowLightDirection(const float direction[3]) {
+    if (gShadowLightDirLoc != -1) {
+        glUniform3fv(gShadowLightDirLoc, 1, direction);
+    }
+}
+
+void setShadowLightPosition(const float position[3]) {
+    if (gShadowLightPosLoc != -1) {
+        glUniform3fv(gShadowLightPosLoc, 1, position);
+    }
+}
+
+void setShadowLightAmbient(const float color[4]) {
+    if (gShadowLightAmbientLoc != -1) {
+        glUniform4fv(gShadowLightAmbientLoc, 1, color);
+    }
+}
+
+void setShadowLightDiffuse(const float color[4]) {
+    if (gShadowLightDiffuseLoc != -1) {
+        glUniform4fv(gShadowLightDiffuseLoc, 1, color);
+    }
+}
+
+void setShadowLightSpecular(const float color[4]) {
+    if (gShadowLightSpecularLoc != -1) {
+        glUniform4fv(gShadowLightSpecularLoc, 1, color);
+    }
+}
+
+void setShadowLightMode(int mode) {
+    if (gShadowLightModeLoc != -1) {
+        glUniform1i(gShadowLightModeLoc, mode);
+    }
+}
+
+void setShadowLightSpotCutoff(float cosCutoff) {
+    if (gShadowLightSpotCutoffLoc != -1) {
+        glUniform1f(gShadowLightSpotCutoffLoc, cosCutoff);
+    }
+}
+
+void setShadowLightEnabled(bool enabled) {
+    if (gShadowLightEnabledLoc != -1) {
+        glUniform1i(gShadowLightEnabledLoc, enabled ? 1 : 0);
+    }
+}
+
 void setSceneShaderEffect(int effectMode) {
     if (gShaderProgram == 0 || gEffectModeLocation < 0) {
         return;

@@ -112,12 +112,16 @@ void drawCurtain(bool leftSide) {
 
     setSceneShaderEffect(kSceneShaderEffectCurtain);
 
-    for (int fold = 0; fold < 9; ++fold) {
-        float offset = fold * 0.62f * side;
-        float depthWave = std::sin(fold * 0.9f) * 0.35f;
+    int numFolds = 40;
+    float foldWidth = 0.18f;
+    for (int fold = 0; fold < numFolds; ++fold) {
+        float offset = fold * foldWidth * side;
+        // Maintain the same wave shape as before but with higher resolution
+        float wavePhase = (fold * 8.1f / numFolds);
+        float depthWave = std::sin(wavePhase) * 0.35f;
         float tint = 0.22f + (depthWave + 0.35f) * 0.05f;
         setMaterial(0.07f, tint, 0.52f, 45.0f, 0.30f);
-        drawBlock(startX + offset, 8.5f, -10.8f + depthWave, 0.55f, 14.5f, 1.25f);
+        drawBlock(startX + offset, 8.5f, -10.8f + depthWave, foldWidth + 0.02f, 14.5f, 1.25f);
     }
 
     setSceneShaderEffect(kSceneShaderEffectDefault);
@@ -139,8 +143,8 @@ void drawStageAndScreen() {
 
     setSceneShaderEffect(kSceneShaderEffectBrick);
     setMaterial(0.70f, 0.72f, 0.74f, 16.0f, 0.08f);
-    drawBlock(0.0f, 1.5f, -14.0f, 28.0f, 2.0f, 12.0f);
-    drawBlock(0.0f, 0.6f, -7.4f, 23.0f, 0.6f, 2.6f);
+    drawBlock(0.0f, 1.0f, -14.0f, 28.0f, 2.0f, 12.0f);
+    drawBlock(0.0f, 0.3f, -7.4f, 23.0f, 0.6f, 2.6f);
 
     setMaterial(0.66f, 0.68f, 0.70f, 14.0f, 0.07f);
     drawBlock(-14.2f, 8.6f, -11.6f, 1.2f, 15.2f, 1.5f);

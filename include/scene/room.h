@@ -4,5 +4,7 @@
 void drawRoom();
 void toggleCeilingLights();
 bool areCeilingLightsVisible();
+void setShadowPassMode(bool inPass);
+bool isInShadowPass();
 
 #endif
