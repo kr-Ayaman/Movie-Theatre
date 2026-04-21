@@ -123,13 +123,7 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 worldNormal, vec3 lightDirWor
     float currentDepth = projCoords.z;
     float ndotl = max(dot(normalize(worldNormal), normalize(lightDirWorld)), 0.0);
     // Use higher bias for seats (3) to prevent acne, and tighter bias for walls/speakers to avoid "Peter Panning"
-    float biasMax = (uEffectMode == 3) ? 0.022 : 0.005;
-    float biasMin = (uEffectMode == 3) ? 0.008 : 0.002;
-    if (uParallelProjection != 0) {
-        biasMax *= 1.8;
-        biasMin *= 1.8;
-    }
-    float bias = max(biasMax * (1.0 - ndotl), biasMin);
+    float bias = 0.0002;
     
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(2048.0, 2048.0);
@@ -325,7 +319,7 @@ void main() {
     // though GL_LIGHT1 (screen) barely illuminates those surfaces.
     float screenShadowGlobalMult = 1.0;
     if (uShadowLightEnabled != 0 && uShadowLightMode == 2) {
-        screenShadowGlobalMult = 1.0 - shadow * 0.65;
+        screenShadowGlobalMult = 1.0 - shadow * 1.0;
     }
 
     vec4 ambientAcc = gl_LightModel.ambient * gl_FrontMaterial.ambient * screenShadowGlobalMult;
@@ -337,8 +331,8 @@ void main() {
     // GL_LIGHT1 = screen spotlight, fully shadowed in screen mode
     accumulateLight(1, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, shadow);
     // Fill lights also dimmed by screen shadow to deepen the effect
-    accumulateLight(2, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow * 0.6 : 0.0));
-    accumulateLight(3, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow * 0.5 : 0.0));
+    accumulateLight(2, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow : 0.0));
+    accumulateLight(3, N, V, worldN, worldV, ambientAcc, diffuseAcc, specularAcc, (uShadowLightMode == 2 ? shadow : 0.0));
 
     vec4 litColor = gl_FrontMaterial.emission + ambientAcc + diffuseAcc + specularAcc;
     litColor.a = gl_FrontMaterial.diffuse.a;

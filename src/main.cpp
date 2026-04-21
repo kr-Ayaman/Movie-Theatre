@@ -80,7 +80,7 @@ void updateDirectionalLightSpaceMatrix(const float shadowLightDir[3]) {
 void updateSpotLightSpaceMatrix(const float shadowLightPos[3], const float shadowLightDir[3]) {
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(100.0f, 1.0f, 0.5f, 100.0f);
+    gluPerspective(100.0f, 1.0f, 4.0f, 100.0f);
     float lightProjMat[16];
     glGetFloatv(GL_PROJECTION_MATRIX, lightProjMat);
 
@@ -211,11 +211,15 @@ void display() {
 
     computeInverseViewMatrix(eyeX, eyeY, eyeZ, centerX, centerY, centerZ, upX, upY, upZ, gInverseViewMatrix);
 
+    int shadowLightMode = areCeilingLightsEnabled() ? kShadowLightModeCeiling : kShadowLightModeScreen;
     float shadowLightDir[3];
-    getShadowLightDirection(shadowLightDir);
+    if (shadowLightMode == kShadowLightModeCeiling) {
+        getShadowLightDirection(shadowLightDir);
+    } else {
+        getScreenLightDirection(shadowLightDir);
+    }
     float shadowLightPos[3];
     getScreenLightPosition(shadowLightPos);
-    int shadowLightMode = areCeilingLightsEnabled() ? kShadowLightModeCeiling : kShadowLightModeScreen;
 
     // 1. Render depth of scene to texture (from light's perspective)
     glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
@@ -231,11 +235,8 @@ void display() {
         updateSpotLightSpaceMatrix(shadowLightPos, shadowLightDir);
     }
 
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(2.0f, 4.0f);
-
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glDisable(GL_CULL_FACE);
 
     setShadowPassMode(true);
     renderScene();
@@ -272,6 +273,10 @@ void display() {
     setShadowLightMode(shadowLightMode);
     setShadowLightEnabled(true);
     setParallelProjectionEnabled(gCamera.projectionMode == PROJECTION_ORTHOGRAPHIC);
+
+    if (shadowLightMode == kShadowLightModeScreen) {
+        setShadowLightSpotCutoff(std::cos(getScreenLightSpotCutoffDegrees() * M_PI / 180.0f));
+    }
 
     setLightSpaceMatrix(gLightSpaceMatrix);
     setInverseViewMatrix(gInverseViewMatrix);
