@@ -1,12 +1,19 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+enum ProjectionMode {
+    PROJECTION_PERSPECTIVE,
+    PROJECTION_ORTHOGRAPHIC
+};
+
 struct Camera {
     float posX;
     float posY;
     float posZ;
     float yaw;
     float pitch;
+    ProjectionMode projectionMode;
+    float orthoScale;  // Scale factor for orthographic projection (height of view)
 
     Camera();
     void reset();
@@ -26,6 +33,9 @@ struct Camera {
     void rotate(float yawDelta, float pitchDelta);
     void zoom(float amount);
     void pan(int dx, int dy);
+    void toggleProjectionMode();
+    void setProjectionMode(ProjectionMode mode);
+    void adjustOrthoScale(float delta);
 };
 
 #endif

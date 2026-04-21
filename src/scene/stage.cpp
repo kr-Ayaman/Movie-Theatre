@@ -127,15 +127,6 @@ void drawCurtain(bool leftSide) {
     setSceneShaderEffect(kSceneShaderEffectDefault);
 }
 
-void drawBeanBag(float x, float z) {
-    setMaterial(0.18f, 0.34f, 0.58f, 28.0f, 0.24f);
-    glPushMatrix();
-    glTranslatef(x, 1.35f, z);
-    glScalef(1.4f, 0.56f, 1.1f);
-    glutSolidSphere(1.0, 26, 20);
-    glPopMatrix();
-}
-
 }  // namespace
 
 void drawStageAndScreen() {
@@ -162,9 +153,6 @@ void drawStageAndScreen() {
 
     drawCurtain(true);
     drawCurtain(false);
-
-    drawBeanBag(-1.8f, -8.2f);
-    drawBeanBag(1.8f, -8.3f);
 }
 
 void initStageVideo(const std::string& videoPath) {

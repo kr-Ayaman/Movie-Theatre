@@ -118,6 +118,8 @@ void Camera::reset() {
     posZ = 18.0f;
     yaw = 180.0f;
     pitch = -10.0f;
+    projectionMode = PROJECTION_PERSPECTIVE;
+    orthoScale = 30.0f;  // Default orthographic view height
 }
 
 void Camera::clamp() {
@@ -195,4 +197,26 @@ void Camera::zoom(float amount) {
 void Camera::pan(int dx, int dy) {
     const float panScale = 0.02f;
     moveLocal(0.0f, -dx * panScale, dy * panScale);
+}
+
+void Camera::toggleProjectionMode() {
+    if (projectionMode == PROJECTION_PERSPECTIVE) {
+        projectionMode = PROJECTION_ORTHOGRAPHIC;
+    } else {
+        projectionMode = PROJECTION_PERSPECTIVE;
+    }
+}
+
+void Camera::setProjectionMode(ProjectionMode mode) {
+    projectionMode = mode;
+}
+
+void Camera::adjustOrthoScale(float delta) {
+    orthoScale += delta;
+    if (orthoScale < 1.0f) {
+        orthoScale = 1.0f;
+    }
+    if (orthoScale > 100.0f) {
+        orthoScale = 100.0f;
+    }
 }

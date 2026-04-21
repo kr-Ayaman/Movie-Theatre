@@ -98,6 +98,27 @@ float smoothApproach(float current, float target, float response, float dt) {
     return current + (target - current) * t;
 }
 
+void setupCameraProjection(int w, int h) {
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    
+    float ratio = static_cast<float>(w) / static_cast<float>(h);
+    
+    if (gCamera.projectionMode == PROJECTION_ORTHOGRAPHIC) {
+        // Orthographic (parallel) projection
+        float orthoHeight = gCamera.orthoScale;
+        float orthoWidth = orthoHeight * ratio;
+        glOrtho(-orthoWidth / 2.0f, orthoWidth / 2.0f, 
+                -orthoHeight / 2.0f, orthoHeight / 2.0f, 
+                0.1f, 300.0f);
+    } else {
+        // Perspective projection (default)
+        gluPerspective(52.0f, ratio, 0.1f, 180.0f);
+    }
+    
+    glMatrixMode(GL_MODELVIEW);
+}
+
 bool isAsciiKeyDown(char key) {
     unsigned char lower = static_cast<unsigned char>(std::tolower(static_cast<unsigned char>(key)));
     unsigned char upper = static_cast<unsigned char>(std::toupper(static_cast<unsigned char>(key)));
@@ -235,9 +256,7 @@ void display() {
     glViewport(0, 0, w, h);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(52.0f, (float)w / (float)h, 0.1f, 180.0f);
+    setupCameraProjection(w, h);
 
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
@@ -278,11 +297,7 @@ void reshape(int w, int h) {
 
     glViewport(0, 0, w, h);
 
-    float ratio = static_cast<float>(w) / static_cast<float>(h);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    gluPerspective(52.0f, ratio, 0.1f, 180.0f);
-    glMatrixMode(GL_MODELVIEW);
+    setupCameraProjection(w, h);
 
     glutPostRedisplay();
 }
@@ -309,8 +324,18 @@ void keyboardDown(unsigned char key, int, int) {
         toggleCeilingLights();
         setCeilingLightsEnabled(areCeilingLightsVisible());
         glutPostRedisplay();
+    } else if (lower == 'p') {
+        gCamera.toggleProjectionMode();
+        glutPostRedisplay();
+    } else if (key == '+' || key == '=') {
+        gCamera.adjustOrthoScale(-2.0f);  // Zoom in (decrease ortho scale)
+        glutPostRedisplay();
+    } else if (key == '-' || key == '_') {
+        gCamera.adjustOrthoScale(2.0f);   // Zoom out (increase ortho scale)
+        glutPostRedisplay();
     }
 }
+
 
 void keyboardUp(unsigned char key, int, int) {
     gKeyDown[key] = false;
