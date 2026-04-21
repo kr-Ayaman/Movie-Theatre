@@ -107,13 +107,15 @@ void drawScreenContent() {
 }
 
 void drawCurtain(bool leftSide) {
-    float side = leftSide ? -1.0f : 1.0f;
-    float startX = leftSide ? -13.3f : 13.3f;
+    float side = leftSide ? 1.0f : -1.0f;
+    // Keep the outer edge inside the wall thickness so the curtain never pokes through.
+    float wallInnerX = leftSide ? -17.15f : 17.15f;
+    float startX = wallInnerX + (leftSide ? 0.30f : -0.30f);
 
     setSceneShaderEffect(kSceneShaderEffectCurtain);
 
-    int numFolds = 40;
-    float foldWidth = 0.18f;
+    int numFolds = 28;
+    float foldWidth = 0.14f;
     for (int fold = 0; fold < numFolds; ++fold) {
         float offset = fold * foldWidth * side;
         // Maintain the same wave shape as before but with higher resolution

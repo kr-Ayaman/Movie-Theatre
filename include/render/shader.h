@@ -29,5 +29,6 @@ void setShadowLightSpecular(const float color[4]);
 void setShadowLightMode(int mode);
 void setShadowLightSpotCutoff(float cosCutoff);
 void setShadowLightEnabled(bool enabled);
+void setParallelProjectionEnabled(bool enabled);
 
 #endif

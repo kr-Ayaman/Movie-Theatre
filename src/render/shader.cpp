@@ -21,6 +21,7 @@ GLint gShadowLightSpecularLoc = -1;
 GLint gShadowLightEnabledLoc = -1;
 GLint gShadowLightModeLoc = -1;
 GLint gShadowLightSpotCutoffLoc = -1;
+GLint gParallelProjectionLoc = -1;
 
 const char* kVertexShaderSource = R"(
 #version 120
@@ -82,6 +83,7 @@ uniform vec4 uShadowLightSpecular;
 uniform int uShadowLightEnabled;
 uniform int uShadowLightMode;
 uniform float uShadowLightCosCutoff;
+uniform int uParallelProjection;
 
 float computeSpotFactor(int lightIndex, vec3 L) {
     vec3 spotDir = normalize(gl_LightSource[lightIndex].spotDirection);
@@ -123,13 +125,18 @@ float calculateShadow(vec4 fragPosLightSpace, vec3 worldNormal, vec3 lightDirWor
     // Use higher bias for seats (3) to prevent acne, and tighter bias for walls/speakers to avoid "Peter Panning"
     float biasMax = (uEffectMode == 3) ? 0.022 : 0.005;
     float biasMin = (uEffectMode == 3) ? 0.008 : 0.002;
+    if (uParallelProjection != 0) {
+        biasMax *= 1.8;
+        biasMin *= 1.8;
+    }
     float bias = max(biasMax * (1.0 - ndotl), biasMin);
     
     float shadow = 0.0;
     vec2 texelSize = 1.0 / vec2(2048.0, 2048.0);
+    float filterRadius = (uParallelProjection != 0) ? 1.75 : 1.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
-            float pcfDepth = texture2D(uShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            float pcfDepth = texture2D(uShadowMap, projCoords.xy + vec2(x, y) * texelSize * filterRadius).r;
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
         }
     }
@@ -308,6 +315,9 @@ void main() {
         if (spotMask > 0.001) {
             shadow = calculateShadow(vLightSpacePos, worldN, shadowLightVectorWorld) * spotMask;
         }
+    }
+    if (uParallelProjection != 0 && uEffectMode == 3) {
+        shadow *= 0.35;
     }
 
     // In screen-light mode (lights off), apply shadow as a global darkness multiplier.
@@ -579,6 +589,7 @@ bool initSceneShader() {
     gShadowLightEnabledLoc = glGetUniformLocation(gShaderProgram, "uShadowLightEnabled");
     gShadowLightModeLoc = glGetUniformLocation(gShaderProgram, "uShadowLightMode");
     gShadowLightSpotCutoffLoc = glGetUniformLocation(gShaderProgram, "uShadowLightCosCutoff");
+    gParallelProjectionLoc = glGetUniformLocation(gShaderProgram, "uParallelProjection");
 
     if (gEffectModeLocation >= 0) {
         glUseProgram(gShaderProgram);
@@ -588,6 +599,9 @@ bool initSceneShader() {
         }
         if (gShadowLightModeLoc >= 0) {
             glUniform1i(gShadowLightModeLoc, kShadowLightModeNone);
+        }
+        if (gParallelProjectionLoc >= 0) {
+            glUniform1i(gParallelProjectionLoc, 0);
         }
         glUseProgram(0);
     }
@@ -669,6 +683,12 @@ void setShadowLightSpotCutoff(float cosCutoff) {
 void setShadowLightEnabled(bool enabled) {
     if (gShadowLightEnabledLoc != -1) {
         glUniform1i(gShadowLightEnabledLoc, enabled ? 1 : 0);
+    }
+}
+
+void setParallelProjectionEnabled(bool enabled) {
+    if (gParallelProjectionLoc != -1) {
+        glUniform1i(gParallelProjectionLoc, enabled ? 1 : 0);
     }
 }
 

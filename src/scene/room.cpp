@@ -11,6 +11,14 @@ namespace {
 bool gCeilingLightsVisible = true;
 bool gInShadowPass = false;
 
+constexpr float kWallThickness = 0.6f;
+constexpr float kRoomWidth = 36.0f;
+constexpr float kRoomDepth = 48.0f;
+constexpr float kSideWallX = 18.0f;
+constexpr float kFrontBackWallZ = 22.0f;
+constexpr float kWallFixtureX = 17.6f;
+constexpr float kFloorPlankWidth = 35.0f;
+
 void drawSimpleWalls() {
     // Skip walls in shadow pass: wall blocks self-shadow (wall top occludes
     // the wall body from above), causing incorrect shadow on wall surfaces.
@@ -20,10 +28,10 @@ void drawSimpleWalls() {
     setMaterial(0.73f, 0.74f, 0.76f, 9.0f, 0.04f);
 
     // Four enclosing walls: left, right, back, and front.
-    drawBlock(-17.0f, 11.0f, 0.0f, 0.6f, 22.0f, 48.0f);
-    drawBlock(17.0f, 11.0f, 0.0f, 0.6f, 22.0f, 48.0f);
-    drawBlock(0.0f, 11.0f, -22.0f, 34.0f, 22.0f, 0.6f);
-    drawBlock(0.0f, 11.0f, 22.0f, 34.0f, 22.0f, 0.6f);
+    drawBlock(-kSideWallX, 11.0f, 0.0f, kWallThickness, 22.0f, kRoomDepth);
+    drawBlock(kSideWallX, 11.0f, 0.0f, kWallThickness, 22.0f, kRoomDepth);
+    drawBlock(0.0f, 11.0f, -kFrontBackWallZ, kRoomWidth, 22.0f, kWallThickness);
+    drawBlock(0.0f, 11.0f, kFrontBackWallZ, kRoomWidth, 22.0f, kWallThickness);
 
     setSceneShaderEffect(kSceneShaderEffectDefault);
 }
@@ -34,7 +42,7 @@ void drawCeilingSurface() {
     if (gInShadowPass) return;
     setSceneShaderEffect(kSceneShaderEffectCeiling);
     setMaterial(0.58f, 0.60f, 0.64f, 7.0f, 0.04f);
-    drawBlock(0.0f, 21.5f, 0.0f, 34.0f, 0.5f, 48.0f);
+    drawBlock(0.0f, 21.5f, 0.0f, kRoomWidth, 0.5f, kRoomDepth);
     setSceneShaderEffect(kSceneShaderEffectDefault);
 }
 
@@ -43,8 +51,8 @@ void drawCeilingLights() {
     if (gInShadowPass) return;
     const int cols = 11;
     const int rows = 7;
-    const float xMin = -15.2f;
-    const float xMax = 15.2f;
+    const float xMin = -16.0f;
+    const float xMax = 16.0f;
     const float zMin = -20.6f;
     const float zMax = 20.6f;
 
@@ -125,7 +133,7 @@ void drawSignLetterX(float x, float y, float z, bool lit, float r, float g, floa
 }
 
 void drawGate(bool lit, bool isLeftWall) {
-    float wallX = isLeftWall ? -16.6f : 16.6f; 
+    float wallX = isLeftWall ? -kWallFixtureX : kWallFixtureX;
     float doorZ = -5.0f; // Moved near the front stage
 
     setSceneShaderEffect(kSceneShaderEffectGate);
@@ -142,14 +150,14 @@ void drawGate(bool lit, bool isLeftWall) {
     }
 
     // The double doors (recessed slightly into the wall)
-    float doorX = isLeftWall ? -16.65f : 16.65f;
+    float doorX = isLeftWall ? -(kWallFixtureX + 0.05f) : (kWallFixtureX + 0.05f);
     setMaterial(0.03f, 0.03f, 0.04f, 10.0f, 0.03f, 0.02f); // very dark door surface
     drawBlock(doorX, 2.7f, doorZ, 0.2f, 5.4f, 3.2f);
     
     // Door pushbars (shiny metal handles)
     setSceneShaderEffect(kSceneShaderEffectMetal);
     setMaterial(0.4f, 0.4f, 0.45f, 50.0f, 0.6f, 0.1f);
-    float barX = isLeftWall ? -16.4f : 16.4f;
+    float barX = isLeftWall ? -(kWallFixtureX - 0.2f) : (kWallFixtureX - 0.2f);
     drawBlock(barX, 2.7f, doorZ - 0.8f, 0.1f, 0.08f, 1.2f);
     drawBlock(barX, 2.7f, doorZ + 0.8f, 0.1f, 0.08f, 1.2f);
     setSceneShaderEffect(kSceneShaderEffectGate);
@@ -160,7 +168,7 @@ void drawGate(bool lit, bool isLeftWall) {
 
     if (!isLeftWall) {
         // Keep the EXIT sign above the right-hand gate only.
-        float signX = 16.65f;
+        float signX = kWallFixtureX + 0.05f;
         float signY = 6.3f; // mounted above the doorway
         float signZ = doorZ;
         setMaterial(0.01f, 0.01f, 0.01f, 4.0f, 0.02f, 0.0f);
@@ -202,7 +210,7 @@ void drawWallSpeakers() {
 
         // Left wall speaker
         glPushMatrix();
-        glTranslatef(-16.6f, yHeight, z);
+        glTranslatef(-kWallFixtureX, yHeight, z);
         glRotatef(12.0f, 0.0f, 1.0f, 0.0f); // turn inwards slightly towards screen
         glRotatef(-15.0f, 0.0f, 0.0f, 1.0f); // tilt down towards audience
         drawSpeakerDetailed(0.5f, 1.6f, 1.0f, true);
@@ -210,7 +218,7 @@ void drawWallSpeakers() {
 
         // Right wall speaker
         glPushMatrix();
-        glTranslatef(16.6f, yHeight, z);
+        glTranslatef(kWallFixtureX, yHeight, z);
         glRotatef(-12.0f, 0.0f, 1.0f, 0.0f); // turn inwards slightly towards screen
         glRotatef(15.0f, 0.0f, 0.0f, 1.0f); // tilt down towards audience
         glRotatef(180.0f, 0.0f, 1.0f, 0.0f); // flip so face points into room
@@ -237,7 +245,7 @@ void drawRoom() {
     setSceneShaderEffect(kSceneShaderEffectDefault);
 
     setMaterial(0.24f, 0.17f, 0.12f, 25.0f, 0.14f);
-    drawBlock(0.0f, -0.2f, 0.0f, 34.0f, 0.6f, 48.0f);
+    drawBlock(0.0f, -0.2f, 0.0f, kRoomWidth, 0.6f, kRoomDepth);
 
     drawSimpleWalls();
     drawGate(gCeilingLightsVisible, false); // Right wall EXIT
@@ -249,7 +257,7 @@ void drawRoom() {
         float z = -20.0f + plank * 2.3f;
         float n = noise2D(plank, 77);
         setMaterial(0.24f + n * 0.08f, 0.17f + n * 0.05f, 0.12f + n * 0.05f, 20.0f, 0.10f);
-        drawBlock(0.0f, 0.02f, z, 33.0f, 0.06f, 1.9f);
+        drawBlock(0.0f, 0.02f, z, kFloorPlankWidth, 0.06f, 1.9f);
     }
 
     drawCeilingLights();
